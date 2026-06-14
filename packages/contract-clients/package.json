@@ -1,0 +1,15 @@
+{
+  "name": "@stellar-shielded/contract-clients",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./mock-token": "./mock-token/src/index.ts",
+    "./shielded-pool": "./shielded-pool/src/index.ts",
+    "./merkle-tree": "./merkle-tree/src/index.ts"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.1.0",
+    "buffer": "^6.0.3"
+  }
+}
