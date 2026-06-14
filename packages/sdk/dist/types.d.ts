@@ -1,0 +1,32 @@
+export declare const BN254_FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+export declare const TREE_DEPTH = 20;
+export declare const PUBLIC_INPUT_COUNT = 12;
+export declare const PROOF_BYTES: number;
+export type Hex32 = `0x${string}`;
+export type ShieldedNote = {
+    ownerPk: Hex32;
+    token: Hex32;
+    amount: string;
+    blinding: Hex32;
+    commitment: Hex32;
+};
+export type NetworkName = "local" | "futurenet" | "testnet" | "mainnet";
+export type DeploymentAddresses = {
+    verifier?: string;
+    merkleTree?: string;
+    shieldedPool?: string;
+    /** @deprecated use shieldedPool */
+    shieldedToken?: string;
+    deployLedger?: number;
+    indexedRouteEvents?: boolean;
+    tokens?: Partial<Record<"USDC" | "EURC" | "YLDS" | "MGUSD", string>>;
+};
+export type NetworkConfig = {
+    networkPassphrase: string;
+    rpcUrl: string;
+    horizonUrl: string;
+    friendbotUrl?: string;
+    sourceAccount: string;
+    containerName?: string;
+    contracts: DeploymentAddresses;
+};
