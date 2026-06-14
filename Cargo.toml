@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+  "packages/contracts/merkle-tree",
+  "packages/contracts/mock-token",
+  "packages/contracts/shielded-pool",
+]
+exclude = [
+  "packages/contracts/rs-soroban-ultrahonk",
+]
+
+[workspace.dependencies]
+soroban-sdk = "25.0.2"
+soroban-poseidon = "25.0.1"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[patch."https://github.com/stellar/rs-soroban-sdk.git"]
+soroban-sdk = { version = "=25.0.2" }
