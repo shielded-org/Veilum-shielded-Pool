@@ -1,0 +1,32 @@
+{
+  "name": "stellar-shielded-token",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "build:circuits": "bash scripts/build-circuits.sh",
+    "build:contracts": "cd packages/contracts/merkle-tree && stellar contract build && cd ../mock-token && stellar contract build && cd ../shielded-pool && stellar contract build && cd ../rs-soroban-ultrahonk && stellar contract build",
+    "generate:bindings": "node scripts/generate-contract-bindings.mjs",
+    "deploy:stables": "node scripts/deploy-stables.mjs",
+    "build:sdk": "npm run build --workspace @stellar-shielded/sdk",
+    "dev:web": "npm run dev --workspace @stellar-shielded/web",
+    "dev:relayer": "npm run dev --workspace @stellar-shielded/relayer",
+    "e2e:devnet": "node scripts/devnet-e2e.mjs",
+    "e2e:local": "STELLAR_NETWORK=local node scripts/devnet-e2e.mjs",
+    "e2e:testnet": "node scripts/devnet-e2e.mjs",
+    "check": "npm run build:sdk"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "0.87.0",
+    "@noir-lang/noir_js": "1.0.0-beta.9",
+    "@stellar/stellar-sdk": "^14.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
