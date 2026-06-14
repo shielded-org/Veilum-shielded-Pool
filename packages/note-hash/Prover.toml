@@ -1,0 +1,4 @@
+owner = "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a"
+token = "0x00f4a5152b690296e07fec63e84752a8e39d7ed56d0a0a09bf6d349091ef1f8a"
+amount = "100"
+blinding = "41"
