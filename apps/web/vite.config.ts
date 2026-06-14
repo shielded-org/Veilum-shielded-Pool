@@ -1,0 +1,30 @@
+import path from "node:path";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [react(), wasm()],
+  define: { global: "globalThis" },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      buffer: path.resolve(__dirname, "../../node_modules/buffer/"),
+    },
+    dedupe: ["@stellar/stellar-base", "@stellar/stellar-sdk"],
+  },
+  optimizeDeps: {
+    include: ["@stellar/stellar-sdk", "buffer"],
+    exclude: ["@noir-lang/noir_js", "@noir-lang/acvm_js", "@noir-lang/noirc_abi", "@aztec/bb.js"],
+    esbuildOptions: { define: { global: "globalThis" }, target: "esnext" },
+  },
+  build: { target: "esnext", commonjsOptions: { transformMixedEsModules: true } },
+  server: {
+    port: 5173,
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+  },
+  assetsInclude: ["**/*.wasm"],
+});
