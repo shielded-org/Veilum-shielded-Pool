@@ -4,3 +4,12 @@ node_modules/
 target/
 **/target/
 scripts/deployment.json
+docs/
+
+# AI agent / IDE harness (Cursor, Claude Code, Codex, etc.)
+.cursor/
+.agents/
+.claude/
+
+DESIGN.md
+PRODUCT.md
