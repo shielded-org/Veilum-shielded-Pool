@@ -1,38 +1,79 @@
 import { Link } from "react-router-dom";
 
+import {
+  LandingAssetsSection,
+  LandingCtaSection,
+  LandingFaqSection,
+  LandingFlowSection,
+  LandingPrivacySection,
+  LandingStepsSection,
+  LandingTrustBar,
+} from "../components/landing/LandingSections";
+
 export function LandingPage() {
   return (
-    <section className="landing-hero">
-      <div>
-        <div className="landing-shield">✓ UltraHonk verified shielded pool</div>
-        <h1>
-          Go further with <span>Shielded.</span>
-        </h1>
-        <p>
-          Private payments on Stellar Soroban. Shield tokens into encrypted notes, send privately via
-          relayer, and withdraw to any account — with zero-knowledge proofs verified on-chain.
-        </p>
-        <div className="landing-actions">
-          <Link to="/dashboard" className="btn btn-primary">
-            Open Dashboard
-          </Link>
-          <Link to="/how-to-use" className="btn btn-secondary">
-            How it works
-          </Link>
+    <>
+      <section className="landing-hero">
+        <div className="landing-hero__copy">
+          <LandingTrustBar />
+          <h1>
+            Private stablecoin payments, <em>on Stellar.</em>
+          </h1>
+          <p className="landing-hero__lead">
+            Veilum shields USDC and stablecoins into encrypted notes, sends value privately with zero-knowledge
+            proofs, and lets you withdraw to any Stellar address — verified on Soroban, not blind trust.
+          </p>
+          <div className="landing-actions">
+            <Link to="/dashboard" className="btn btn-primary btn-lg">
+              Open Dashboard
+            </Link>
+            <Link to="/how-to-use" className="btn btn-secondary btn-lg">
+              How it works
+            </Link>
+          </div>
+          <dl className="landing-stats">
+            <div>
+              <dt>Proof system</dt>
+              <dd>UltraHonk</dd>
+            </div>
+            <div>
+              <dt>Tree depth</dt>
+              <dd>2²⁰ notes</dd>
+            </div>
+            <div>
+              <dt>Network</dt>
+              <dd>Stellar testnet</dd>
+            </div>
+          </dl>
         </div>
-      </div>
-      <div className="landing-card-stack">
-        <div className="landing-card back">
-          <div className="chip" />
-          <div>•••• •••• •••• 2026</div>
-          <div style={{ marginTop: 40, opacity: 0.8 }}>Shielded balance</div>
+        <div className="landing-card-stack" aria-hidden>
+          <div className="landing-card landing-card--back-2">
+            <div className="landing-card__chip" />
+            <div className="landing-card__label">Shielded · USDC</div>
+            <div className="landing-card__balance">••••••</div>
+            <div className="landing-card__meta">Encrypted note</div>
+          </div>
+          <div className="landing-card landing-card--back-1">
+            <div className="landing-card__chip" />
+            <div className="landing-card__label">Shielded · USDC</div>
+            <div className="landing-card__balance">••••••</div>
+            <div className="landing-card__meta">Private balance</div>
+          </div>
+          <div className="landing-card landing-card--front">
+            <div className="landing-card__chip landing-card__chip--brand" />
+            <div className="landing-card__label">Veilum wallet</div>
+            <div className="landing-card__balance landing-card__balance--show">2,400.00</div>
+            <div className="landing-card__meta">USDC shielded</div>
+          </div>
         </div>
-        <div className="landing-card front">
-          <div className="chip" />
-          <div>STELLAR SHIELDED</div>
-          <div style={{ marginTop: 40, fontSize: 28, fontWeight: 800 }}>Private by default</div>
-        </div>
-      </div>
-    </section>
+      </section>
+
+      <LandingPrivacySection />
+      <LandingStepsSection />
+      <LandingFlowSection />
+      <LandingAssetsSection />
+      <LandingFaqSection />
+      <LandingCtaSection />
+    </>
   );
 }
