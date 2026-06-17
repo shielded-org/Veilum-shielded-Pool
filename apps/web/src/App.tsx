@@ -28,6 +28,7 @@ export function App() {
           <Route path="faucet" element={<FaucetPage />} />
           <Route path="transfer" element={<TransferPage />} />
           <Route path="unshield" element={<UnshieldPage />} />
+          <Route path="withdraw" element={<Navigate to="/dashboard/unshield" replace />} />
           <Route path="notes" element={<NotesPage />} />
           <Route path="keys" element={<KeysPage />} />
         </Route>
