@@ -25,6 +25,7 @@ type ShieldedState = {
   syncWarnings: string[];
   relayerOk: boolean;
   transactions: TransactionRecord[];
+  onboardingDismissed: boolean;
   /** Incremental route-event scan cache per pool (shielded-token parity). */
   scanCacheByPool: Record<string, StoredScanCacheRow>;
   setNetwork: (n: NetworkName) => void;
@@ -52,6 +53,7 @@ type ShieldedState = {
   bumpRouteCursor: () => number;
   addTransaction: (tx: TransactionRecord) => void;
   updateTransaction: (id: string, patch: Partial<TransactionRecord>) => void;
+  setOnboardingDismissed: (v: boolean) => void;
 };
 
 export const useShieldedStore = create<ShieldedState>()(
@@ -74,6 +76,7 @@ export const useShieldedStore = create<ShieldedState>()(
       syncWarnings: [],
       relayerOk: false,
       transactions: [],
+      onboardingDismissed: false,
       scanCacheByPool: {},
       setNetwork: (network) => set({ network }),
       setKeys: (keys) =>
@@ -139,6 +142,7 @@ export const useShieldedStore = create<ShieldedState>()(
         set({
           transactions: get().transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         }),
+      setOnboardingDismissed: (onboardingDismissed) => set({ onboardingDismissed }),
     }),
     {
       name: "stellar-shielded-store",
@@ -154,6 +158,7 @@ export const useShieldedStore = create<ShieldedState>()(
         merkleLeaves: s.merkleLeaves,
         revealBalances: s.revealBalances,
         transactions: s.transactions,
+        onboardingDismissed: s.onboardingDismissed,
         scanCacheByPool: s.scanCacheByPool,
       }),
       merge: (persisted, current) => {
