@@ -5,6 +5,7 @@ import {
 } from "@creit.tech/stellar-wallets-kit";
 import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
 
+import { applyLocalWalletIcons } from "./wallet-icons";
 import type { NetworkConfig, NetworkName } from "./types";
 
 let initialized = false;
@@ -39,7 +40,7 @@ export function initWalletKit(network: NetworkName = "testnet"): void {
   if (!initialized) {
     StellarWalletsKit.init({
       network: kitNetwork,
-      modules: defaultModules(),
+      modules: applyLocalWalletIcons(defaultModules()),
     });
     initialized = true;
     return;
