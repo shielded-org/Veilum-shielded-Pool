@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultStore } from "jotai";
 
+import { WalletConnectButton } from "./ui/WalletConnectButton";
 import { loadNetworkConfig } from "../lib/config";
 import { deriveOwnerPk, getBrowserPoseidonHasher } from "../lib/hasher";
 import {
@@ -22,7 +23,6 @@ import { BACKGROUND_POLL_MS, pickRefreshMode, scanCacheKey } from "../lib/scan-c
 import { useWallet } from "../hooks/use-wallet";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
-import { shortenAddress } from "../lib/utils";
 
 function applyRefreshResult(
   result: Awaited<ReturnType<typeof refreshShieldedWallet>>,
@@ -89,30 +89,18 @@ export function ConnectWallet() {
     useShieldedStore.getState().setSyncWarnings([]);
   }, [disconnect, clearKeys]);
 
+  const showSyncKeys = !!(keyMaterialAddress && wallet && wallet !== keyMaterialAddress);
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      {wallet ? (
-        <>
-          <span className="badge ok">{shortenAddress(wallet, 6)}</span>
-          <button
-            className="btn btn-secondary"
-            style={{ padding: "6px 14px", fontSize: 13 }}
-            onClick={handleDisconnect}
-            disabled={busy}
-          >
-            Disconnect
-          </button>
-          {keyMaterialAddress && wallet !== keyMaterialAddress && (
-            <button className="btn btn-purple" style={{ padding: "6px 14px", fontSize: 13 }} onClick={() => void connect()} disabled={busy}>
-              Sync keys
-            </button>
-          )}
-        </>
-      ) : (
-        <button className="btn btn-purple" onClick={() => void connect()} disabled={busy}>
-          {busy ? "Connecting…" : "Connect wallet"}
-        </button>
-      )}
+      <WalletConnectButton
+        address={wallet}
+        busy={busy}
+        onConnect={() => void connect()}
+        onDisconnect={handleDisconnect}
+        onSyncKeys={() => void connect()}
+        showSyncKeys={showSyncKeys}
+      />
       {error && (
         <p className="badge err" style={{ marginTop: 8 }}>
           {error}

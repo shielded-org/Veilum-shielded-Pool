@@ -1,49 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { ConnectWallet } from "../components/ConnectWallet";
+import { CopyableField } from "../components/ui/CopyableField";
+import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
 import { useWallet } from "../hooks/use-wallet";
+import { stellarExpertAccountUrl } from "../lib/explorer";
 import { encodeShieldedAddress } from "../lib/shielded-address";
 import { toHex32 } from "../lib/utils";
 import { useShieldedStore } from "../store/use-shielded-store";
-
-function KeyField({
-  label,
-  value,
-  masked,
-  sensitive,
-}: {
-  label: string;
-  value: string;
-  masked: boolean;
-  sensitive?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-  const display = !value ? "Connect wallet to generate" : masked && sensitive ? "••••••••••••••••" : value;
-
-  async function copy() {
-    if (!value || (masked && sensitive)) return;
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <div className="field">
-      <label>{label}</label>
-      <div style={{ display: "flex", gap: 8 }}>
-        <textarea readOnly rows={sensitive ? 2 : 1} value={display} style={{ fontFamily: "monospace", fontSize: 13 }} />
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={!value || (masked && !!sensitive)}
-          onClick={() => void copy()}
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export function KeysPage() {
   const { address: wallet } = useWallet();
@@ -52,9 +15,8 @@ export function KeysPage() {
   const viewingPub = useShieldedStore((s) => s.viewingPub);
   const ownerPk = useShieldedStore((s) => s.ownerPk);
   const network = useShieldedStore((s) => s.network);
-  const reveal = useShieldedStore((s) => s.revealBalances);
-  const setReveal = useShieldedStore((s) => s.setRevealBalances);
-  const [copied, setCopied] = useState(false);
+  const [revealKeys, setRevealKeys] = useState(false);
+  const [pendingReveal, setPendingReveal] = useState(false);
 
   const spendingHex = spendingKey ? toHex32(BigInt(spendingKey)) : "";
   const viewingPrivHex = viewingKey ? toHex32(BigInt(viewingKey)) : "";
@@ -68,71 +30,155 @@ export function KeysPage() {
     }
   }, [viewingPub, ownerPk, network]);
 
-  async function copyAddress() {
-    if (!shieldedAddress) return;
-    await navigator.clipboard.writeText(shieldedAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   const hasKeys = !!(spendingKey && viewingKey && viewingPub && ownerPk);
 
-  return (
-    <>
-      <div className="dashboard-topbar">
-        <h1 style={{ margin: 0 }}>Viewing keys</h1>
-        <ConnectWallet />
-      </div>
-      <div className="card">
-        <p className="muted">
-          Share your <strong>shielded receive address</strong> with senders. They paste one string to
-          route encrypted notes to you. Private keys are hidden by default — toggle reveal to copy them.
-        </p>
+  const walletExplorerUrl = wallet ? stellarExpertAccountUrl(network, wallet) : null;
 
+  function handleRevealToggle() {
+    if (revealKeys) {
+      setRevealKeys(false);
+      setPendingReveal(false);
+      return;
+    }
+    setPendingReveal(true);
+  }
+
+  function confirmReveal() {
+    setRevealKeys(true);
+    setPendingReveal(false);
+  }
+
+  function cancelReveal() {
+    setPendingReveal(false);
+  }
+
+  return (
+    <FormPageLayout
+      aside={
+        <FormAsidePanel title="Sharing safely">
+          <FormAsideList
+            items={[
+              { term: "Share only shd_ address", detail: "Safe to give senders — routes encrypted notes to you." },
+              { term: "Never share private keys", detail: "Viewing and spending keys control your shielded funds." },
+              { term: "Same network", detail: "Address includes network id — must match sender's dashboard." },
+            ]}
+          />
+        </FormAsidePanel>
+      }
+    >
+      <div className="card keys-card">
         {!hasKeys && wallet && (
-          <p className="badge warn" style={{ marginBottom: 16 }}>
+          <p className="alert-banner alert-banner--warn keys-card__alert">
             Keys not loaded — connect your wallet and approve the one-time key derivation signature.
           </p>
         )}
 
-        <div className="field">
-          <label>Shielded receive address</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input readOnly value={shieldedAddress || "Connect wallet to generate"} />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={!shieldedAddress}
-              onClick={() => void copyAddress()}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-            Format: <code>shd_</code> + base64url(owner PK, viewing pub, network id).
+        <section className="keys-panel keys-panel--receive">
+          <header className="keys-panel__head">
+            <h2>Receive address</h2>
+            <p>
+              Share your shielded receive address with senders. They paste one string to route encrypted
+              notes to you.
+            </p>
+          </header>
+
+          <CopyableField
+            id="shielded-receive"
+            label="Shielded receive address"
+            value={shieldedAddress}
+            hint={
+              <>
+                Format: <code>shd_</code> + base64url(owner PK, viewing pub, network id).
+              </>
+            }
+          />
+
+          <p className="keys-panel__note">
+            Only share the <code>shd_</code> address with senders — never your private keys.
           </p>
-        </div>
+        </section>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 0" }}>
-          <input type="checkbox" checked={reveal} onChange={(e) => setReveal(e.target.checked)} />
-          Reveal private keys
-        </label>
+        <section className="keys-panel">
+          <header className="keys-panel__head">
+            <h2>Public identity</h2>
+            <p>Your Stellar wallet and shielded public keys derived from it.</p>
+          </header>
 
-        <h3 style={{ marginTop: 24 }}>Account</h3>
-        <KeyField label="Stellar wallet address" value={wallet ?? ""} masked={false} />
+          <div className="keys-panel__fields">
+            <CopyableField
+              id="stellar-wallet"
+              label="Stellar wallet address"
+              value={wallet ?? ""}
+              footerLink={
+                walletExplorerUrl
+                  ? { href: walletExplorerUrl, label: "View on Stellar Expert →" }
+                  : undefined
+              }
+            />
+            <CopyableField
+              id="viewing-pub"
+              label="Viewing public key"
+              value={viewingPub ?? ""}
+              hint="Used to identify incoming encrypted notes."
+            />
+            <CopyableField
+              id="owner-pk"
+              label="Owner PK (shielded identity)"
+              value={ownerPk ?? ""}
+              hint="Commitment anchor for your shielded notes."
+            />
+          </div>
+        </section>
 
-        <h3 style={{ marginTop: 24 }}>Public keys</h3>
-        <KeyField label="Viewing public key" value={viewingPub ?? ""} masked={false} />
-        <KeyField label="Owner PK (shielded identity)" value={ownerPk ?? ""} masked={false} />
+        <section className="keys-panel keys-panel--private">
+          <header className="keys-panel__head keys-panel__head--row">
+            <div>
+              <h2>Private keys</h2>
+              <p>Never share these — they control decryption and spending.</p>
+            </div>
+            <label className="keys-reveal-toggle">
+              <input type="checkbox" checked={revealKeys} onChange={handleRevealToggle} />
+              Reveal private keys
+            </label>
+          </header>
 
-        <h3 style={{ marginTop: 24 }}>Private keys</h3>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-          Never share these. The viewing private key decrypts incoming notes; the spending key authorizes
-          transfers and withdrawals.
-        </p>
-        <KeyField label="Viewing private key" value={viewingPrivHex} masked={!reveal} sensitive />
-        <KeyField label="Spending private key" value={spendingHex} masked={!reveal} sensitive />
+          {pendingReveal && (
+            <div className="key-reveal-confirm" role="alertdialog" aria-labelledby="reveal-title">
+              <p id="reveal-title">
+                <strong>Reveal sensitive keys?</strong> Your viewing and spending private keys will be
+                shown on screen. Never share these with anyone — they control your shielded funds.
+              </p>
+              <div className="key-reveal-confirm__actions">
+                <button type="button" className="btn btn-danger btn-sm" onClick={confirmReveal}>
+                  Yes, reveal keys
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={cancelReveal}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="keys-panel__fields">
+            <CopyableField
+              id="viewing-priv"
+              label="Viewing private key"
+              value={viewingPrivHex}
+              masked={!revealKeys}
+              sensitive
+              hint="Decrypts incoming route events and notes."
+            />
+            <CopyableField
+              id="spending-priv"
+              label="Spending private key"
+              value={spendingHex}
+              masked={!revealKeys}
+              sensitive
+              hint="Authorizes transfers and withdrawals from the pool."
+            />
+          </div>
+        </section>
       </div>
-    </>
+    </FormPageLayout>
   );
 }

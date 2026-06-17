@@ -1,8 +1,14 @@
 import { useState } from "react";
 
-import { ConnectWallet, syncShieldedWalletNow } from "../components/ConnectWallet";
-import { useWallet } from "../hooks/use-wallet";
+import { syncShieldedWalletNow } from "../components/ConnectWallet";
 import { ProofLoader } from "../components/ProofLoader";
+import { NoteSelector } from "../components/ui/NoteSelector";
+import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
+import { PrivacyCallout } from "../components/ui/PrivacyCallout";
+import { RelayerStatus } from "../components/ui/RelayerStatus";
+import { StatusMessage } from "../components/ui/StatusMessage";
+import { useTokenRegistry } from "../hooks/use-token-registry";
+import { useWallet } from "../hooks/use-wallet";
 import { loadNetworkConfig } from "../lib/config";
 import { executeUnshield } from "../lib/shield-ops";
 import { useUnspentNotes } from "../hooks/use-shielded-selectors";
@@ -17,6 +23,7 @@ export function UnshieldPage() {
   const [busy, setBusy] = useState(false);
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
+  const relayerOk = useShieldedStore((s) => s.relayerOk);
   const notes = useUnspentNotes();
   const merkleLeaves = useShieldedStore((s) => s.merkleLeaves);
   const spendingKey = useShieldedStore((s) => s.spendingKey);
@@ -29,6 +36,9 @@ export function UnshieldPage() {
   const markNoteSpent = useShieldedStore((s) => s.markNoteSpent);
   const addNote = useShieldedStore((s) => s.addNote);
   const [noteId, setNoteId] = useState("");
+  const registry = useTokenRegistry();
+  const selectedNote = notes.find((n) => n.id === noteId) ?? notes[0];
+  const selectedSymbol = registry?.symbolForField(selectedNote?.token) ?? "token";
 
   async function onUnshield() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
@@ -41,7 +51,7 @@ export function UnshieldPage() {
       id: txId,
       type: "unshield",
       status: "pending",
-      amount,
+      amount: `${amount} ${registry?.symbolForField(note.token) ?? "token"}`,
       createdAt: new Date().toISOString(),
     });
     try {
@@ -81,48 +91,76 @@ export function UnshieldPage() {
     }
   }
 
+  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
+    ? "error"
+    : status.includes("complete")
+      ? "success"
+      : "info";
+
   return (
     <>
-      <div className="dashboard-topbar">
-        <h1 style={{ margin: 0 }}>Withdraw / Unshield</h1>
-        <ConnectWallet />
-      </div>
-      <div className="card" style={{ maxWidth: 560 }}>
-        <p className="muted">
-          Exits shielded balance to a public Stellar address. Recipient and amount will be visible
-          on-chain. Remaining value can stay as a private change note.
-        </p>
-        <div className="field">
-          <label>Note to spend</label>
-          {notes.length === 0 ? (
-            <p className="muted">No unspent notes — shield tokens or receive a private transfer first.</p>
-          ) : (
-            <select value={noteId || notes[0]?.id || ""} onChange={(e) => setNoteId(e.target.value)}>
-              {notes.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.amount.toString()} — {n.commitment.slice(0, 10)}…
-                </option>
-              ))}
-            </select>
-          )}
+      <FormPageLayout
+        aside={
+          <FormAsidePanel title="Withdrawal details">
+            <FormAsideList
+              items={[
+                { term: "Public exit", detail: "Recipient address and withdrawn amount appear on-chain." },
+                { term: "Private change", detail: "Remaining note value can stay shielded as a change note." },
+                { term: "Default recipient", detail: "Leave blank to send to your connected wallet." },
+              ]}
+            />
+          </FormAsidePanel>
+        }
+      >
+        <div className="card form-card">
+          <RelayerStatus online={relayerOk} />
+
+          <PrivacyCallout variant="public">
+            Exits shielded balance to a public Stellar address. Recipient and amount will be visible
+            on-chain. Remaining value can stay as a private change note.
+          </PrivacyCallout>
+
+          <div className="field">
+            <label htmlFor="unshield-note">Note to spend</label>
+            <NoteSelector
+              notes={notes}
+              value={noteId}
+              onChange={setNoteId}
+              emptyMessage="No unspent notes — shield tokens or receive a private transfer first."
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="unshield-amount">Public amount ({selectedSymbol})</label>
+            <input
+              id="unshield-amount"
+              className="input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="unshield-recipient">Recipient Stellar address</label>
+            <input
+              id="unshield-recipient"
+              className="input input--mono"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder={wallet ? `${wallet.slice(0, 4)}… (connected wallet)` : "G…"}
+            />
+            <p className="field-hint">Defaults to your connected wallet if left empty.</p>
+          </div>
+          <div className="form-actions">
+            <button
+              className="btn btn-primary"
+              disabled={busy || !wallet || notes.length === 0}
+              onClick={() => void onUnshield()}
+            >
+              Unshield
+            </button>
+          </div>
+          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
-        <div className="field">
-          <label>Public amount</label>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Recipient Stellar address (default: connected wallet)</label>
-          <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="G…" />
-        </div>
-        <button
-          className="btn btn-purple"
-          disabled={busy || !wallet || notes.length === 0}
-          onClick={() => void onUnshield()}
-        >
-          Unshield
-        </button>
-        {status && <p style={{ marginTop: 12 }}>{status}</p>}
-      </div>
+      </FormPageLayout>
       {busy && <ProofLoader message={status} />}
     </>
   );

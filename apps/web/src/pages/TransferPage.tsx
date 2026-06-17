@@ -1,8 +1,14 @@
 import { useState } from "react";
 
-import { ConnectWallet, syncShieldedWalletNow } from "../components/ConnectWallet";
-import { useWallet } from "../hooks/use-wallet";
+import { syncShieldedWalletNow } from "../components/ConnectWallet";
 import { ProofLoader } from "../components/ProofLoader";
+import { NoteSelector } from "../components/ui/NoteSelector";
+import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
+import { PrivacyCallout } from "../components/ui/PrivacyCallout";
+import { RelayerStatus } from "../components/ui/RelayerStatus";
+import { StatusMessage } from "../components/ui/StatusMessage";
+import { useTokenRegistry } from "../hooks/use-token-registry";
+import { useWallet } from "../hooks/use-wallet";
 import { loadNetworkConfig } from "../lib/config";
 import { executePrivateTransfer } from "../lib/shield-ops";
 import {
@@ -22,6 +28,7 @@ export function TransferPage() {
   const [busy, setBusy] = useState(false);
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
+  const relayerOk = useShieldedStore((s) => s.relayerOk);
   const notes = useUnspentNotes();
   const merkleLeaves = useShieldedStore((s) => s.merkleLeaves);
   const spendingKey = useShieldedStore((s) => s.spendingKey);
@@ -34,6 +41,9 @@ export function TransferPage() {
   const addTransaction = useShieldedStore((s) => s.addTransaction);
   const updateTransaction = useShieldedStore((s) => s.updateTransaction);
   const [noteId, setNoteId] = useState("");
+  const registry = useTokenRegistry();
+  const selectedNote = notes.find((n) => n.id === noteId) ?? notes[0];
+  const selectedSymbol = registry?.symbolForField(selectedNote?.token) ?? "token";
 
   async function onTransfer() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
@@ -52,7 +62,7 @@ export function TransferPage() {
       id: txId,
       type: "transfer",
       status: "pending",
-      amount,
+      amount: `${amount} ${registry?.symbolForField(note.token) ?? "token"}`,
       createdAt: new Date().toISOString(),
     });
     try {
@@ -94,55 +104,78 @@ export function TransferPage() {
     }
   }
 
+  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
+    ? "error"
+    : status.includes("submitted")
+      ? "success"
+      : "info";
+
   return (
     <>
-      <div className="dashboard-topbar">
-        <h1 style={{ margin: 0 }}>Private Transfer</h1>
-        <ConnectWallet />
-      </div>
-      <div className="card" style={{ maxWidth: 560 }}>
-        <p className="muted">
-          Relayer submits the proof. Your wallet is not the transaction signer — sender identity stays
-          off-chain.
-        </p>
-        <div className="field">
-          <label>Source note</label>
-          {notes.length === 0 ? (
-            <p className="muted">No unspent notes — shield tokens or receive a private transfer first.</p>
-          ) : (
-            <select value={noteId || notes[0]?.id || ""} onChange={(e) => setNoteId(e.target.value)}>
-              {notes.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.amount.toString()} — {n.commitment.slice(0, 10)}…
-                </option>
-              ))}
-            </select>
-          )}
+      <FormPageLayout
+        aside={
+          <FormAsidePanel title="Private transfer checklist">
+            <FormAsideList
+              items={[
+                { term: "Relayer required", detail: "Proof is submitted by the relayer — your wallet is not the tx signer." },
+                { term: "Recipient address", detail: "Paste a shd_… address from the recipient's Viewing Keys page." },
+                { term: "Change note", detail: "Any leftover value returns to you as a new private note." },
+              ]}
+            />
+          </FormAsidePanel>
+        }
+      >
+        <div className="card form-card">
+          <RelayerStatus online={relayerOk} />
+
+          <PrivacyCallout variant="private">
+            Relayer submits the proof. Your wallet is not the transaction signer — sender identity stays
+            off-chain.
+          </PrivacyCallout>
+
+          <div className="field">
+            <label htmlFor="transfer-note">Source note</label>
+            <NoteSelector
+              notes={notes}
+              value={noteId}
+              onChange={setNoteId}
+              emptyMessage="No unspent notes — shield tokens or receive a private transfer first."
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="transfer-amount">Amount ({selectedSymbol})</label>
+            <input
+              id="transfer-amount"
+              className="input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="transfer-recipient">Recipient shielded address</label>
+            <input
+              id="transfer-recipient"
+              className="input input--mono"
+              value={recipientAddress}
+              onChange={(e) => setRecipientAddress(e.target.value)}
+              placeholder="shd_…"
+            />
+            <p className="field-hint">
+              Ask the recipient for their address from Dashboard → Viewing Keys.
+            </p>
+          </div>
+          <div className="form-actions">
+            <button
+              className="btn btn-primary"
+              disabled={busy || !wallet || notes.length === 0}
+              onClick={() => void onTransfer()}
+            >
+              Send privately
+            </button>
+          </div>
+          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
-        <div className="field">
-          <label>Amount</label>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Recipient shielded address</label>
-          <input
-            value={recipientAddress}
-            onChange={(e) => setRecipientAddress(e.target.value)}
-            placeholder="shd_…"
-          />
-          <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-            Ask the recipient for their address from Dashboard → Viewing Keys.
-          </p>
-        </div>
-        <button
-          className="btn btn-purple"
-          disabled={busy || !wallet || notes.length === 0}
-          onClick={() => void onTransfer()}
-        >
-          Send privately
-        </button>
-        {status && <p style={{ marginTop: 12 }}>{status}</p>}
-      </div>
+      </FormPageLayout>
       {busy && <ProofLoader message={status} />}
     </>
   );

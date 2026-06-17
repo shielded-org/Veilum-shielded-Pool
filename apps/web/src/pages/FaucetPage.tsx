@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { ConnectWallet } from "../components/ConnectWallet";
 import { useWallet } from "../hooks/use-wallet";
+import { StatusMessage } from "../components/ui/StatusMessage";
+import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
+import { RelayerStatus } from "../components/ui/RelayerStatus";
+import { TokenSelector } from "../components/ui/TokenSelector";
 import { loadNetworkConfig } from "../lib/config";
 import {
   loadStableTokensWithDecimals,
@@ -127,86 +130,101 @@ export function FaucetPage() {
     }
   })();
 
+  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
+    ? "error"
+    : status.includes("Minted")
+      ? "success"
+      : "info";
+
   return (
     <>
-      <div className="dashboard-topbar">
-        <h1 style={{ margin: 0 }}>Testnet Faucet</h1>
-        <ConnectWallet />
-      </div>
-      <div className="card" style={{ maxWidth: 560 }}>
-        <p className="muted">
-          Mint mock stablecoins to your wallet for shielding, private transfer, and withdrawal.
-          Amounts use each token&apos;s on-chain decimals (Stellar standard: 7).
-        </p>
-        <div className="field">
-          <label>Stablecoin</label>
-          {tokenList.length === 0 ? (
-            <p className="muted">Loading tokens…</p>
-          ) : (
-            <select value={selected} onChange={(e) => setSelected(e.target.value as StableSymbol)}>
-              {tokenList.map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol} — {t.name} ({t.decimals} decimals)
-                </option>
-              ))}
-            </select>
-          )}
-          {active && (
-            <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-              {active.description}
-              <br />
-              Contract: {active.contractId}
-            </p>
-          )}
-        </div>
-        <div className="field">
-          <label>Recipient</label>
-          <input value={wallet ?? ""} readOnly placeholder="Connect wallet first" />
-        </div>
-        <div className="field">
-          <label>
-            Amount ({active?.symbol ?? "token"}, {decimals} decimal{decimals === 1 ? "" : "s"})
-          </label>
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={`e.g. 1000 or 10.${"0".repeat(Math.min(decimals, 3))}1`}
-          />
-          {previewBaseUnits != null && (
-            <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-              = {previewBaseUnits.toString()} base units (stroops)
-            </p>
-          )}
-        </div>
-        {wallet && active && (
-          <p className="muted" style={{ marginTop: 0 }}>
-            {active.symbol} balance: {formatTokenAmount(balances[active.symbol] ?? 0n, decimals)}{" "}
-            {active.symbol}
+      <FormPageLayout
+        aside={
+          <FormAsidePanel title="Testnet faucet">
+            <FormAsideList
+              items={[
+                { term: "Mint via relayer", detail: "Gasless — requires relayer at localhost:8787." },
+                { term: "Mint from wallet", detail: "Signs directly; needs XLM for Soroban fees." },
+                { term: "Decimals", detail: "Stellar tokens use 7 decimal places (stroops)." },
+              ]}
+            />
+            {wallet && active && (
+              <p className="form-aside__balance">
+                Balance:{" "}
+                <strong>
+                  {formatTokenAmount(balances[active.symbol] ?? 0n, decimals)} {active.symbol}
+                </strong>
+              </p>
+            )}
+          </FormAsidePanel>
+        }
+      >
+        <div className="card form-card">
+          <RelayerStatus online={relayerOk} />
+
+          <p className="form-intro">
+            Mint mock stablecoins to your wallet for shielding, private transfer, and withdrawal.
           </p>
-        )}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <button
-            className="btn btn-purple"
-            disabled={busy || !wallet || !active || !relayerOk}
-            onClick={() => void onMintViaRelayer()}
-          >
-            Mint via relayer
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={busy || !wallet || !active}
-            onClick={() => void onMintDirect()}
-          >
-            Mint from wallet
-          </button>
+
+          <div className="field">
+            <label htmlFor="faucet-token">Stablecoin</label>
+            <TokenSelector
+              tokens={tokenList}
+              value={selected}
+              onChange={setSelected}
+              emptyMessage="Loading tokens…"
+            />
+            {active && (
+              <p className="field-hint">{active.description}</p>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="faucet-recipient">Recipient</label>
+            <input
+              id="faucet-recipient"
+              className="input input--mono"
+              value={wallet ?? ""}
+              readOnly
+              placeholder="Connect wallet first"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="faucet-amount">
+              Amount ({active?.symbol ?? "token"}, {decimals} decimal{decimals === 1 ? "" : "s"})
+            </label>
+            <input
+              id="faucet-amount"
+              className="input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={`e.g. 1000 or 10.${"0".repeat(Math.min(decimals, 3))}1`}
+            />
+            {previewBaseUnits != null && (
+              <p className="field-hint">= {previewBaseUnits.toString()} base units (stroops)</p>
+            )}
+          </div>
+          <div className="form-actions">
+            <button
+              className="btn btn-primary"
+              disabled={busy || !wallet || !active || !relayerOk}
+              onClick={() => void onMintViaRelayer()}
+            >
+              Mint via relayer
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={busy || !wallet || !active}
+              onClick={() => void onMintDirect()}
+            >
+              Mint from wallet
+            </button>
+          </div>
+          {!relayerOk && (
+            <p className="field-hint">Relayer offline — use &quot;Mint from wallet&quot; (requires XLM for fees).</p>
+          )}
+          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
-        {!relayerOk && (
-          <p className="muted" style={{ marginTop: 12 }}>
-            Relayer offline — use &quot;Mint from wallet&quot; (requires XLM for fees).
-          </p>
-        )}
-        {status && <p style={{ marginTop: 12 }}>{status}</p>}
-      </div>
+      </FormPageLayout>
     </>
   );
 }

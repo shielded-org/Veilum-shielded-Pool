@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { ConnectWallet, syncShieldedWalletNow } from "../components/ConnectWallet";
-import { useWallet } from "../hooks/use-wallet";
+import { syncShieldedWalletNow } from "../components/ConnectWallet";
 import { ProofLoader } from "../components/ProofLoader";
+import { PrivacyCallout } from "../components/ui/PrivacyCallout";
+import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
+import { StatusMessage } from "../components/ui/StatusMessage";
+import { TokenSelector } from "../components/ui/TokenSelector";
+import { useWallet } from "../hooks/use-wallet";
 import { loadNetworkConfig } from "../lib/config";
 import { executeShieldDeposit } from "../lib/shield-ops";
 import {
@@ -89,44 +93,63 @@ export function ShieldPage() {
     }
   }
 
+  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
+    ? "error"
+    : status.includes("Shielded") || status.includes("Tx ")
+      ? "success"
+      : "info";
+
   return (
     <>
-      <div className="dashboard-topbar">
-        <h1 style={{ margin: 0 }}>Shield / Deposit</h1>
-        <ConnectWallet />
-      </div>
-      <div className="card" style={{ maxWidth: 520 }}>
-        <p className="muted">
-          Moves public stablecoins into the shielded pool. This transaction is signed by your wallet
-          and links your address to the deposit amount on-chain.
-        </p>
-        <div className="field">
-          <label>Stablecoin</label>
-          {tokenList.length === 0 ? (
-            <p className="muted">No tokens deployed — run npm run deploy:stables</p>
-          ) : (
-            <select value={selected} onChange={(e) => setSelected(e.target.value as StableSymbol)}>
-              {tokenList.map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol} — {t.name}
-                </option>
-              ))}
-            </select>
-          )}
+      <FormPageLayout
+        aside={
+          <FormAsidePanel title="What happens when you shield">
+            <FormAsideList
+              items={[
+                { term: "On-chain visibility", detail: "Your Stellar address and deposit amount appear publicly." },
+                { term: "What you receive", detail: "An encrypted note in the pool, tied to your viewing key." },
+                { term: "Next step", detail: "Send privately or withdraw — only the deposit is public." },
+              ]}
+            />
+          </FormAsidePanel>
+        }
+      >
+        <div className="card form-card">
+          <PrivacyCallout variant="public">
+            Moves public stablecoins into the shielded pool. This transaction is signed by your wallet
+            and links your address to the deposit amount on-chain.
+          </PrivacyCallout>
+
+          <div className="field">
+            <label htmlFor="shield-token">Stablecoin</label>
+            <TokenSelector
+              tokens={tokenList}
+              value={selected}
+              onChange={setSelected}
+              emptyMessage="No tokens deployed — run npm run deploy:stables"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="shield-amount">Amount (token units, 7 decimals)</label>
+            <input
+              id="shield-amount"
+              className="input"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="form-actions">
+            <button
+              className="btn btn-primary"
+              disabled={busy || !wallet || tokenList.length === 0}
+              onClick={() => void onShield()}
+            >
+              Shield tokens
+            </button>
+          </div>
+          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
-        <div className="field">
-          <label>Amount (token units, 7 decimals)</label>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
-        <button
-          className="btn btn-purple"
-          disabled={busy || !wallet || tokenList.length === 0}
-          onClick={() => void onShield()}
-        >
-          Shield tokens
-        </button>
-        {status && <p style={{ marginTop: 12 }}>{status}</p>}
-      </div>
+      </FormPageLayout>
       {busy && <ProofLoader message={status || "Generating…"} />}
     </>
   );
