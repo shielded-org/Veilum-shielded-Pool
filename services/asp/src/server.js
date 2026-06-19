@@ -18,6 +18,8 @@ import {
   createLocalPoseidonHasher,
 } from "@stellar-shielded/sdk";
 
+import { Keypair } from "@stellar/stellar-sdk";
+
 import {
   approveMember,
   denyMember,
@@ -27,7 +29,8 @@ import {
   queuePending,
   runAspScreen,
 } from "./asp-pipeline.js";
-import { createAspSorobanReader } from "./soroban-read.js";
+import { createAspSorobanReader, resolveAspSourceAddress } from "./soroban-read.js";
+import { bytes32ScVal, createSorobanSubmitter } from "./soroban-submit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASP_ROOT = path.resolve(__dirname, "..");
@@ -74,21 +77,33 @@ const RPC_FALLBACK_URLS =
         ]
       : [];
 
+const SOURCE_ADDRESS = resolveAspSourceAddress({
+  sourceAddress: process.env.ASP_SOURCE_ADDRESS || null,
+  publicKey: ASP_PUBLIC_KEY,
+  secretKey: ASP_SECRET,
+  sourceAccount: SOURCE_ACCOUNT,
+});
+
+const aspSubmitter = ASP_SECRET
+  ? createSorobanSubmitter({
+      secretKey: ASP_SECRET,
+      networkPassphrase: NETWORK_PASSPHRASE,
+      primaryRpcUrl: RPC_URL,
+      fallbackRpcUrls: RPC_FALLBACK_URLS,
+    })
+  : null;
+
 const aspSoroban =
   ASP_MEMBERSHIP &&
   createAspSorobanReader({
     networkPassphrase: NETWORK_PASSPHRASE,
     primaryRpcUrl: RPC_URL,
     fallbackRpcUrls: RPC_FALLBACK_URLS,
-    sourceAccount: SOURCE_ACCOUNT,
+    sourceAddress: SOURCE_ADDRESS,
     contractId: ASP_MEMBERSHIP,
   });
 
 const DB_PATH = path.join(DATA_DIR, "asp-registry.json");
-
-function runCapture(cmd, args) {
-  return execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-}
 
 function stellarConfigDir() {
   if (process.env.STELLAR_CONFIG_DIR) return process.env.STELLAR_CONFIG_DIR;
@@ -105,7 +120,7 @@ function ensureAspIdentity() {
     `secret_key = "${ASP_SECRET}"\n`
   );
   if (ASP_PUBLIC_KEY) {
-    const addr = runCapture("stellar", ["keys", "address", SOURCE_ACCOUNT]);
+    const addr = Keypair.fromSecret(ASP_SECRET).publicKey();
     if (addr !== ASP_PUBLIC_KEY) {
       throw new Error(`ASP_PUBLIC_KEY mismatch: expected ${ASP_PUBLIC_KEY}, got ${addr}`);
     }
@@ -113,6 +128,11 @@ function ensureAspIdentity() {
 }
 
 function ensureStellarNetwork() {
+  try {
+    execFileSync("stellar", ["--version"], { stdio: "ignore" });
+  } catch {
+    return;
+  }
   try {
     execFileSync("stellar", ["network", "remove", NETWORK], { stdio: "ignore" });
   } catch {
@@ -166,59 +186,24 @@ function deriveMembershipBlinding(ownerPk) {
   return deriveBlinding(ownerPk, createHash);
 }
 
-function invokeInsertMember(ownerPk, membershipBlinding) {
+async function invokeInsertMember(ownerPk, membershipBlinding) {
   if (!ASP_MEMBERSHIP) throw new Error("ASP_MEMBERSHIP_CONTRACT not configured");
-  const out = runCapture("stellar", [
-    "contract",
-    "invoke",
-    "--id",
+  if (!aspSubmitter) throw new Error("ASP_SECRET_KEY required for on-chain membership");
+  const args = [bytes32ScVal(ownerPk), bytes32ScVal(membershipBlinding)];
+  const leafIndex = await aspSubmitter.simulateContractInvoke(
     ASP_MEMBERSHIP,
-    "--source-account",
-    SOURCE_ACCOUNT,
-    "--network",
-    NETWORK,
-    "--",
     "insert_member",
-    "--owner_pk",
-    ownerPk.replace(/^0x/, ""),
-    "--membership_blinding",
-    membershipBlinding.replace(/^0x/, ""),
-  ]);
-  const line = out.split("\n").find((l) => /^\d+$/.test(l.trim()));
-  const idx = line ? Number(line.trim()) : null;
-  const rootOut = runCapture("stellar", [
-    "contract",
-    "invoke",
-    "--id",
-    ASP_MEMBERSHIP,
-    "--source-account",
-    SOURCE_ACCOUNT,
-    "--network",
-    NETWORK,
-    "--",
-    "get_last_root",
-  ]);
-  const rootLine = rootOut.split("\n").pop()?.replace(/"/g, "") ?? "";
-  const aspRoot = rootLine.startsWith("0x") ? rootLine : `0x${rootLine.padStart(64, "0").slice(-64)}`;
-  return { leafIndex: idx, aspRoot };
+    args
+  );
+  await aspSubmitter.submitContractInvoke(ASP_MEMBERSHIP, "insert_member", args);
+  const aspRoot = await aspSoroban.getLastRoot();
+  return { leafIndex: Number(leafIndex), aspRoot };
 }
 
-function fetchOnChainAspRoot() {
-  if (!ASP_MEMBERSHIP) throw new Error("ASP_MEMBERSHIP_CONTRACT not configured");
-  const rootOut = runCapture("stellar", [
-    "contract",
-    "invoke",
-    "--id",
-    ASP_MEMBERSHIP,
-    "--source-account",
-    SOURCE_ACCOUNT,
-    "--network",
-    NETWORK,
-    "--",
-    "get_last_root",
-  ]);
-  const rootLine = rootOut.split("\n").pop()?.replace(/"/g, "") ?? "";
-  return rootLine.startsWith("0x") ? rootLine : `0x${rootLine.padStart(64, "0").slice(-64)}`;
+async function invokeDenyOnChain(ownerPk, deny = true) {
+  if (!ASP_DENY || !aspSubmitter) return;
+  const fn = deny ? "deny" : "undeny";
+  await aspSubmitter.submitContractInvoke(ASP_DENY, fn, [bytes32ScVal(ownerPk)]);
 }
 
 async function validateAspRoot(aspRoot, approvedRecord) {
@@ -229,25 +214,6 @@ async function validateAspRoot(aspRoot, approvedRecord) {
     throw new Error("ASP_MEMBERSHIP_CONTRACT not configured");
   }
   return aspSoroban.isKnownRoot(aspRoot);
-}
-
-function invokeDenyOnChain(ownerPk, deny = true) {
-  if (!ASP_DENY) return;
-  const fn = deny ? "deny" : "undeny";
-  runCapture("stellar", [
-    "contract",
-    "invoke",
-    "--id",
-    ASP_DENY,
-    "--source-account",
-    SOURCE_ACCOUNT,
-    "--network",
-    NETWORK,
-    "--",
-    fn,
-    "--owner_pk",
-    ownerPk.replace(/^0x/, ""),
-  ]);
 }
 
 const screenDeps = () => ({
@@ -318,6 +284,8 @@ const server = http.createServer(async (req, res) => {
         autoScreen: AUTO_SCREEN,
         aspMembership: ASP_MEMBERSHIP,
         aspDeny: ASP_DENY,
+        sourceAddress: SOURCE_ADDRESS,
+        submitterReady: Boolean(aspSubmitter),
       });
     }
 
@@ -413,7 +381,7 @@ const server = http.createServer(async (req, res) => {
           : db.pending.find((p) => p.ownerPk === ownerPk)?.membershipBlinding;
       if (!membershipBlinding) membershipBlinding = deriveMembershipBlinding(ownerPk);
 
-      const approved = approveMember(db, saveDb, ownerPk, membershipBlinding, invokeInsertMember, {
+      const approved = await approveMember(db, saveDb, ownerPk, membershipBlinding, invokeInsertMember, {
         manual: true,
         contractId: ASP_MEMBERSHIP,
         approvedAt: new Date().toISOString(),
@@ -426,7 +394,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const ownerPk = normalizePk(body.ownerPk);
       const db = loadDb();
-      const denied = denyMember(db, saveDb, ownerPk, invokeDenyOnChain, { manual: true });
+      const denied = await denyMember(db, saveDb, ownerPk, invokeDenyOnChain, { manual: true });
       return json(res, 200, { ok: true, status: "denied", ownerPk, ...denied });
     }
 
@@ -437,7 +405,7 @@ const server = http.createServer(async (req, res) => {
       const db = loadDb();
       db.denied = db.denied.filter((d) => d.ownerPk !== ownerPk);
       saveDb(db);
-      invokeDenyOnChain(ownerPk, false);
+      await invokeDenyOnChain(ownerPk, false);
       return json(res, 200, { ok: true, status: "unknown", ownerPk });
     }
 

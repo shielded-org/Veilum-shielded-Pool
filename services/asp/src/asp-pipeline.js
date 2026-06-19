@@ -24,7 +24,7 @@ export function membershipStatus(db, ownerPk) {
   return "unknown";
 }
 
-export function approveMember(
+export async function approveMember(
   db,
   saveDb,
   ownerPk,
@@ -32,7 +32,7 @@ export function approveMember(
   invokeInsertMember,
   extra = {}
 ) {
-  const onchain = invokeInsertMember(ownerPk, membershipBlinding);
+  const onchain = await invokeInsertMember(ownerPk, membershipBlinding);
   const approved = {
     ownerPk,
     membershipBlinding,
@@ -85,7 +85,7 @@ export function getCanonicalMembershipChain(db, contractId, leafIndex) {
   return chain;
 }
 
-export function denyMember(db, saveDb, ownerPk, invokeDenyOnChain, extra = {}) {
+export async function denyMember(db, saveDb, ownerPk, invokeDenyOnChain, extra = {}) {
   const denied = {
     ownerPk,
     deniedAt: new Date().toISOString(),
@@ -97,7 +97,7 @@ export function denyMember(db, saveDb, ownerPk, invokeDenyOnChain, extra = {}) {
     db.denied.push(denied);
   }
   saveDb(db);
-  invokeDenyOnChain(ownerPk, true);
+  await invokeDenyOnChain(ownerPk, true);
   return denied;
 }
 
@@ -150,14 +150,14 @@ export async function runAspScreen({
   };
 
   if (scan.clean) {
-    const approved = approveMember(db, saveDb, ownerPk, membershipBlinding, invokeInsertMember, {
+    const approved = await approveMember(db, saveDb, ownerPk, membershipBlinding, invokeInsertMember, {
       ...screenMeta,
       contractId,
     });
     return { ok: true, status: "approved", auto: true, scan, ...approved };
   }
 
-  const denied = denyMember(db, saveDb, ownerPk, invokeDenyOnChain, screenMeta);
+  const denied = await denyMember(db, saveDb, ownerPk, invokeDenyOnChain, screenMeta);
   return {
     ok: false,
     status: "denied",

@@ -1,6 +1,4 @@
-import { execFileSync } from "node:child_process";
-
-import { Contract, rpc, scValToNative, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { Contract, Keypair, rpc, scValToNative, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 
 const { Api } = rpc;
 
@@ -9,11 +7,19 @@ function bytes32ScVal(hex) {
   return xdr.ScVal.scvBytes(buf);
 }
 
+export function resolveAspSourceAddress({ sourceAddress, publicKey, secretKey, sourceAccount }) {
+  if (sourceAddress) return sourceAddress;
+  if (publicKey?.startsWith("G")) return publicKey;
+  if (secretKey) return Keypair.fromSecret(secretKey).publicKey();
+  if (sourceAccount?.startsWith("G")) return sourceAccount;
+  throw new Error("Set ASP_SECRET_KEY, ASP_PUBLIC_KEY, or ASP_SOURCE_ADDRESS");
+}
+
 export function createAspSorobanReader({
   networkPassphrase,
   primaryRpcUrl,
   fallbackRpcUrls = [],
-  sourceAccount,
+  sourceAddress,
   contractId,
 }) {
   const rpcUrls = [
@@ -24,15 +30,8 @@ export function createAspSorobanReader({
 
   const uniqueRpcUrls = [...new Set(rpcUrls)];
 
-  let sourceAddress = process.env.ASP_SOURCE_ADDRESS || null;
   if (!sourceAddress) {
-    if (sourceAccount.startsWith("G")) {
-      sourceAddress = sourceAccount;
-    } else {
-      sourceAddress = execFileSync("stellar", ["keys", "address", sourceAccount], {
-        encoding: "utf8",
-      }).trim();
-    }
+    throw new Error("sourceAddress is required for ASP Soroban reads");
   }
 
   async function simulateRead(fn, scArgs) {
