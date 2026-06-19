@@ -1,82 +1,82 @@
 import { Link } from "react-router-dom";
 
-import { FadeInSection } from "../components/ui/FadeInSection";
+import { RevealItem, ScrollReveal } from "../components/ui/ScrollReveal";
 
 const STEPS = [
   {
-    title: "Connect wallet",
+    title: "Connect your wallet",
     detail: "Use Freighter, xBull, Albedo, or Lobstr on Stellar Testnet.",
   },
   {
-    title: "Derive shielded keys",
-    detail: "Sign the one-time consent — spending and viewing keys stay in your browser.",
+    title: "Unlock your private balance",
+    detail: "Approve one message from your wallet. Your keys stay in the browser — we never see them.",
   },
   {
-    title: "Mint test tokens",
-    detail: "Use the Testnet Faucet to mint mock USDC before shielding.",
+    title: "Get test tokens",
+    detail: "Open the Faucet in the dashboard and mint play-money USDC for testing.",
   },
   {
-    title: "Shield / Deposit",
-    detail: "Move public tokens into the pool. Your address and amount are visible on-chain.",
+    title: "Add funds",
+    detail: "Move tokens into Veilum. Your address and the amount will show on Stellar, like any deposit.",
   },
   {
-    title: "Private transfer",
-    detail: "Paste the recipient's shd_… address. Relayer submits the ZK proof.",
+    title: "Send a private payment",
+    detail: "Paste the recipient's Veilum address from their Keys page. They'll see the payment in their balance.",
   },
   {
-    title: "Withdraw / Unshield",
-    detail: "Exit to any G… address. Recipient and amount are public; change stays private.",
+    title: "Withdraw to your wallet",
+    detail: "Cash out to any Stellar address. The withdrawal is public; leftover balance can stay private.",
   },
   {
-    title: "Scan notes",
-    detail: "Notes page decrypts route events so you can track balances and commitments.",
+    title: "Check your balance",
+    detail: "The Notes page shows everything you've received. Refresh anytime to pick up new payments.",
   },
 ];
 
-const REQUIREMENTS = [
+const BEFORE_YOU_START = [
   {
-    term: "Relayer",
-    detail: "Running at http://127.0.0.1:8787 or set VITE_RELAYER_URL",
+    term: "A Stellar wallet",
+    detail: "Freighter or another supported wallet on Testnet",
   },
   {
-    term: "Contracts",
-    detail: "Deployed addresses in public/deployment.json",
+    term: "Testnet tokens",
+    detail: "Free from the in-app Faucet — no real money needed",
   },
   {
-    term: "Browser",
-    detail: "SharedArrayBuffer support (COOP/COEP headers in dev server)",
+    term: "A modern browser",
+    detail: "Chrome, Firefox, Safari, or Edge — latest version recommended",
   },
 ];
 
 export function HowToUsePage() {
   return (
-    <FadeInSection className="content-page">
-      <header className="content-page__hero">
+    <div className="content-page">
+      <ScrollReveal className="content-page__hero" as="header" immediate variant="up">
         <h1>How to use Veilum</h1>
         <p className="content-page__lead">
-          Seven steps from wallet connect to your first private transfer on Stellar testnet.
+          Seven steps from connecting your wallet to sending a payment only you and the recipient can see.
         </p>
         <Link to="/dashboard" className="btn btn-primary">
           Open Dashboard
         </Link>
-      </header>
+      </ScrollReveal>
 
       <ol className="guide-steps">
         {STEPS.map((step, i) => (
-          <li key={step.title} className="guide-step card">
+          <RevealItem key={step.title} as="li" className="guide-step card" index={i}>
             <span className="guide-step__num">{i + 1}</span>
             <div>
               <strong>{step.title}</strong>
               <p>{step.detail}</p>
             </div>
-          </li>
+          </RevealItem>
         ))}
       </ol>
 
-      <article className="card content-card content-card--wide">
-        <h2>Requirements</h2>
+      <ScrollReveal as="article" className="card content-card content-card--wide" variant="up">
+        <h2>Before you start</h2>
         <dl className="form-aside__list form-aside__list--inline">
-          {REQUIREMENTS.map(({ term, detail }) => (
+          {BEFORE_YOU_START.map(({ term, detail }) => (
             <div key={term}>
               <dt>{term}</dt>
               <dd>{detail}</dd>
@@ -84,10 +84,10 @@ export function HowToUsePage() {
           ))}
         </dl>
         <p className="content-footnote">
-          Need protocol context? See the <Link to="/about">About page</Link> for privacy boundaries and
-          architecture.
+          Want the bigger picture? Read <Link to="/about">About Veilum</Link> for how privacy works across
+          deposits, sends, and withdrawals.
         </p>
-      </article>
-    </FadeInSection>
+      </ScrollReveal>
+    </div>
   );
 }
