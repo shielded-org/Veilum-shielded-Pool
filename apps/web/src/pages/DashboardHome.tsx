@@ -37,6 +37,7 @@ export function DashboardHome() {
   const ready = !!(wallet && hasKeys);
 
   const balanceAssets = registry ? summarizeUnspentBySymbol(notes, registry) : [];
+  const balancesLoading = !ready || registry === null || scanLoading || scanRefreshing;
 
   const uniqueTransactions = transactions.filter((tx, i, arr) => {
     return arr.findIndex((t) => t.id === tx.id) === i;
@@ -98,7 +99,7 @@ export function DashboardHome() {
         assets={balanceAssets}
         reveal={reveal}
         onToggleReveal={() => setReveal(!reveal)}
-        loading={scanLoading}
+        loading={balancesLoading}
         ready={ready}
         unspentCount={unspent.length}
         totalNotes={notes.length}

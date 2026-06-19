@@ -1036,3 +1036,31 @@ select {
     padding: 12px;
   }
 }
+
+/* react-toastify — bottom-right product feedback */
+.veilum-toast-container {
+  z-index: var(--z-toast);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+.toast-message__text {
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+.toast-message__link {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.tx-row__detail {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  margin-top: 2px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

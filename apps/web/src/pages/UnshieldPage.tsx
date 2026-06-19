@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { syncShieldedWalletNow } from "../components/ConnectWallet";
 import { ProofLoader } from "../components/ProofLoader";
@@ -9,8 +9,10 @@ import { RelayerStatus } from "../components/ui/RelayerStatus";
 import { StatusMessage } from "../components/ui/StatusMessage";
 import { useTokenRegistry } from "../hooks/use-token-registry";
 import { useWallet } from "../hooks/use-wallet";
+import { fetchAspStatus, type AspStatus } from "../lib/asp";
 import { loadNetworkConfig } from "../lib/config";
 import { executeUnshield } from "../lib/shield-ops";
+import { finishNotify, notifyLoading } from "../lib/notify";
 import { useUnspentNotes } from "../hooks/use-shielded-selectors";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { parseTokenAmount } from "../lib/utils";
@@ -33,12 +35,22 @@ export function UnshieldPage() {
   const bumpRouteCursor = useShieldedStore((s) => s.bumpRouteCursor);
   const addTransaction = useShieldedStore((s) => s.addTransaction);
   const updateTransaction = useShieldedStore((s) => s.updateTransaction);
-  const markNoteSpent = useShieldedStore((s) => s.markNoteSpent);
-  const addNote = useShieldedStore((s) => s.addNote);
   const [noteId, setNoteId] = useState("");
   const registry = useTokenRegistry();
   const selectedNote = notes.find((n) => n.id === noteId) ?? notes[0];
   const selectedSymbol = registry?.symbolForField(selectedNote?.token) ?? "token";
+  const [aspStatus, setAspStatus] = useState<AspStatus | null>(null);
+  const [aspEnforced, setAspEnforced] = useState(false);
+
+  useEffect(() => {
+    if (!ownerPk) return;
+    void loadNetworkConfig(network).then((config) => {
+      setAspEnforced(Boolean(config.contracts.aspEnforceShield || config.contracts.aspGate));
+      if (config.contracts.aspEnforceShield || config.contracts.aspGate) {
+        void fetchAspStatus(ownerPk as Hex32).then((s) => setAspStatus(s.status));
+      }
+    });
+  }, [network, ownerPk]);
 
   async function onUnshield() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
@@ -47,6 +59,7 @@ export function UnshieldPage() {
     const to = recipient || wallet;
     setBusy(true);
     const txId = crypto.randomUUID();
+    const loadingToast = notifyLoading("Submitting withdrawal…");
     addTransaction({
       id: txId,
       type: "unshield",
@@ -56,6 +69,9 @@ export function UnshieldPage() {
     });
     try {
       const config = await loadNetworkConfig(network);
+      const contractId = config.contracts.aspGate ?? config.contracts.shieldedPool;
+      updateTransaction(txId, { contractId });
+      setStatus("Generating proof and submitting to relayer…");
       const result = await executeUnshield({
         config,
         wallet,
@@ -72,30 +88,40 @@ export function UnshieldPage() {
         routeCursor: bumpRouteCursor(),
         onStatus: setStatus,
       });
-      markNoteSpent(note.id);
-      if (result.changeNote) addNote(result.changeNote);
+      await syncShieldedWalletNow({ mode: "incremental" });
       updateTransaction(txId, {
         status: "confirmed",
         txHash: result.txHash ?? undefined,
+        contractId,
       });
-      await syncShieldedWalletNow({ mode: "incremental" });
-      setStatus(`Withdrawal complete (${result.requestId})`);
+      finishNotify(loadingToast, {
+        ok: true,
+        message: "Withdrawal confirmed on-chain",
+        txHash: result.txHash,
+      });
+      setStatus("Withdrawal confirmed on-chain");
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       updateTransaction(txId, {
         status: "failed",
-        detail: e instanceof Error ? e.message : String(e),
+        detail: message,
       });
-      setStatus(e instanceof Error ? e.message : String(e));
+      finishNotify(loadingToast, { ok: false, message });
+      setStatus(message);
     } finally {
       setBusy(false);
     }
   }
 
-  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
-    ? "error"
-    : status.includes("complete")
-      ? "success"
-      : "info";
+  const statusVariant =
+    status.toLowerCase().includes("error") ||
+    status.toLowerCase().includes("fail") ||
+    status.toLowerCase().includes("not applied") ||
+    status.toLowerCase().includes("did not succeed")
+      ? "error"
+      : status.toLowerCase().includes("confirmed")
+        ? "success"
+        : "info";
 
   return (
     <>
@@ -114,6 +140,18 @@ export function UnshieldPage() {
       >
         <div className="card form-card">
           <RelayerStatus online={relayerOk} />
+
+          {aspEnforced && aspStatus ? (
+            <StatusMessage
+              variant={aspStatus === "approved" ? "success" : aspStatus === "denied" ? "error" : "info"}
+            >
+              {aspStatus === "approved"
+                ? "ASP membership active — withdrawal will verify compliance on-chain."
+                : aspStatus === "denied"
+                  ? "ASP denied — withdrawal blocked."
+                  : "ASP compliance required before withdrawal."}
+            </StatusMessage>
+          ) : null}
 
           <PrivacyCallout variant="public">
             Exits shielded balance to a public Stellar address. Recipient and amount will be visible
@@ -152,7 +190,7 @@ export function UnshieldPage() {
           <div className="form-actions">
             <button
               className="btn btn-primary"
-              disabled={busy || !wallet || notes.length === 0}
+              disabled={busy || aspStatus === "denied" || !wallet || notes.length === 0}
               onClick={() => void onUnshield()}
             >
               Unshield

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { syncShieldedWalletNow } from "../components/ConnectWallet";
 import { ProofLoader } from "../components/ProofLoader";
@@ -11,6 +11,7 @@ import { useTokenRegistry } from "../hooks/use-token-registry";
 import { useWallet } from "../hooks/use-wallet";
 import { loadNetworkConfig } from "../lib/config";
 import { executePrivateTransfer } from "../lib/shield-ops";
+import { finishNotify, notifyLoading } from "../lib/notify";
 import {
   NETWORK_IDS,
   networkNameFromId,
@@ -36,8 +37,6 @@ export function TransferPage() {
   const viewingPub = useShieldedStore((s) => s.viewingPub);
   const ownerPk = useShieldedStore((s) => s.ownerPk);
   const bumpRouteCursor = useShieldedStore((s) => s.bumpRouteCursor);
-  const markNoteSpent = useShieldedStore((s) => s.markNoteSpent);
-  const addNote = useShieldedStore((s) => s.addNote);
   const addTransaction = useShieldedStore((s) => s.addTransaction);
   const updateTransaction = useShieldedStore((s) => s.updateTransaction);
   const [noteId, setNoteId] = useState("");
@@ -58,6 +57,7 @@ export function TransferPage() {
 
     setBusy(true);
     const txId = crypto.randomUUID();
+    const loadingToast = notifyLoading("Submitting private transfer…");
     addTransaction({
       id: txId,
       type: "transfer",
@@ -67,6 +67,8 @@ export function TransferPage() {
     });
     try {
       const config = await loadNetworkConfig(network);
+      updateTransaction(txId, { contractId: config.contracts.shieldedPool });
+      setStatus("Generating proof and submitting to relayer…");
       const result = await executePrivateTransfer({
         config,
         wallet,
@@ -85,30 +87,38 @@ export function TransferPage() {
         recipientRouteCursor: 0,
         onStatus: setStatus,
       });
-      markNoteSpent(note.id);
-      if (result.changeNote) addNote(result.changeNote);
+      setStatus("Refreshing wallet from chain…");
+      await syncShieldedWalletNow({ mode: "incremental" });
       updateTransaction(txId, {
         status: "confirmed",
         txHash: result.txHash ?? undefined,
+        contractId: config.contracts.shieldedPool,
       });
-      await syncShieldedWalletNow({ mode: "incremental" });
-      setStatus(`Transfer submitted (${result.requestId})`);
+      finishNotify(loadingToast, {
+        ok: true,
+        message: "Private transfer confirmed on-chain",
+        txHash: result.txHash,
+      });
+      setStatus("Transfer confirmed on-chain");
     } catch (e) {
-      updateTransaction(txId, {
-        status: "failed",
-        detail: e instanceof Error ? e.message : String(e),
-      });
-      setStatus(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      updateTransaction(txId, { status: "failed", detail: message });
+      finishNotify(loadingToast, { ok: false, message });
+      setStatus(message);
     } finally {
       setBusy(false);
     }
   }
 
-  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
-    ? "error"
-    : status.includes("submitted")
-      ? "success"
-      : "info";
+  const statusVariant =
+    status.toLowerCase().includes("error") ||
+    status.toLowerCase().includes("fail") ||
+    status.toLowerCase().includes("not applied") ||
+    status.toLowerCase().includes("did not succeed")
+      ? "error"
+      : status.toLowerCase().includes("confirmed")
+        ? "success"
+        : "info";
 
   return (
     <>

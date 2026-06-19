@@ -12,6 +12,7 @@ import {
   type StableSymbol,
 } from "../lib/tokens";
 import { requestFaucetMint, waitForRelayerConfirmation } from "../lib/relayer";
+import { finishNotify, notifyLoading } from "../lib/notify";
 import { createRpc, ensureWalletNetwork, getTokenBalance, mintToken } from "../lib/soroban";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { formatTokenAmount, parseTokenAmount } from "../lib/utils";
@@ -72,6 +73,7 @@ export function FaucetPage() {
   async function onMintViaRelayer() {
     if (!wallet || !active) throw new Error("Connect wallet first");
     setBusy(true);
+    const loadingToast = notifyLoading(`Minting ${active.symbol} via relayer…`);
     setStatus(`Requesting ${active.symbol} mint from relayer…`);
     try {
       const config = await loadNetworkConfig(network);
@@ -81,15 +83,17 @@ export function FaucetPage() {
         recipient: wallet,
         amount: baseUnits.toString(),
       });
-      if (res.txHash) setStatus(`Submitted tx ${res.txHash} — waiting for confirmation…`);
+      if (res.txHash) setStatus(`Submitted — waiting for on-chain confirmation…`);
       const final = await waitForRelayerConfirmation(res.requestId);
       if (final.status !== "confirmed") throw new Error(final.error || `Mint ${final.status}`);
       const bals = await refreshBalances(config, wallet);
-      setStatus(
-        `Minted ${amount} ${active.symbol}. Balance: ${formatTokenAmount(bals[active.symbol] ?? 0n, decimals)} ${active.symbol}`
-      );
+      const msg = `Minted ${amount} ${active.symbol}. Balance: ${formatTokenAmount(bals[active.symbol] ?? 0n, decimals)} ${active.symbol}`;
+      finishNotify(loadingToast, { ok: true, message: msg, txHash: final.txHash ?? res.txHash });
+      setStatus(msg);
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      finishNotify(loadingToast, { ok: false, message });
+      setStatus(message);
     } finally {
       setBusy(false);
     }
@@ -98,6 +102,7 @@ export function FaucetPage() {
   async function onMintDirect() {
     if (!wallet || !active) throw new Error("Connect wallet first");
     setBusy(true);
+    const loadingToast = notifyLoading(`Minting ${active.symbol} from wallet…`);
     setStatus(`Signing ${active.symbol} mint transaction…`);
     try {
       const config = await loadNetworkConfig(network);
@@ -106,11 +111,13 @@ export function FaucetPage() {
       const baseUnits = parseMintAmount(amount, decimals);
       const txHash = await mintToken(rpc, config, wallet, active.contractId, wallet, baseUnits);
       const bals = await refreshBalances(config, wallet);
-      setStatus(
-        `Minted ${amount} ${active.symbol}. Tx ${txHash}. Balance: ${formatTokenAmount(bals[active.symbol] ?? 0n, decimals)} ${active.symbol}`
-      );
+      const msg = `Minted ${amount} ${active.symbol}. Balance: ${formatTokenAmount(bals[active.symbol] ?? 0n, decimals)} ${active.symbol}`;
+      finishNotify(loadingToast, { ok: true, message: msg, txHash });
+      setStatus(msg);
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      finishNotify(loadingToast, { ok: false, message });
+      setStatus(message);
     } finally {
       setBusy(false);
     }

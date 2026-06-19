@@ -7,6 +7,7 @@ import { App } from "./App";
 import { WalletProvider } from "./components/WalletProvider";
 import "./styles/global.css";
 import "./styles/pages.css";
+import "react-toastify/dist/ReactToastify.css";
 
 (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 

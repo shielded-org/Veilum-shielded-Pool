@@ -1,4 +1,3 @@
-import { useShieldedSync } from "../components/ConnectWallet";
 import { EmptyState } from "../components/ui/EmptyState";
 import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
 import { NotesSummary } from "../components/ui/NotesSummary";
@@ -8,7 +7,6 @@ import { TxLink } from "../components/ui/TxLink";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 export function NotesPage() {
-  useShieldedSync();
   const notes = useShieldedStore((s) => s.notes);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
   const registry = useTokenRegistry();
