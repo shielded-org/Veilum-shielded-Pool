@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { IconCopy } from "./icons";
+import { IconCheck, IconCopy } from "./icons";
 
 type CopyableFieldProps = {
   id?: string;
@@ -11,6 +11,8 @@ type CopyableFieldProps = {
   footerLink?: { href: string; label: string };
   masked?: boolean;
   sensitive?: boolean;
+  /** Emphasize primary receive address styling. */
+  prominent?: boolean;
 };
 
 export function CopyableField({
@@ -22,6 +24,7 @@ export function CopyableField({
   footerLink,
   masked = false,
   sensitive = false,
+  prominent = false,
 }: CopyableFieldProps) {
   const [copied, setCopied] = useState(false);
   const hidden = masked && sensitive;
@@ -36,7 +39,7 @@ export function CopyableField({
   }
 
   return (
-    <div className="copyable-field">
+    <div className={`copyable-field${prominent ? " copyable-field--prominent" : ""}`}>
       <label htmlFor={id} className="form-label">
         {label}
       </label>
@@ -51,12 +54,13 @@ export function CopyableField({
         />
         <button
           type="button"
-          className="copyable-field__btn"
+          className={`copyable-field__btn${copied ? " copyable-field__btn--copied" : ""}`}
           onClick={() => void copy()}
           disabled={!canCopy}
           aria-label={copied ? "Copied" : `Copy ${label}`}
+          title={copied ? "Copied" : "Copy"}
         >
-          {copied ? "Copied ✓" : <IconCopy />}
+          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
         </button>
       </div>
       {hint ? <p className="field-hint">{hint}</p> : null}
