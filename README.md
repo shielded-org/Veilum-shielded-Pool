@@ -1,8 +1,39 @@
 # Veilum
 
-**Veilum** is a privacy payment protocol on Stellar. It lets users shield public stablecoins into encrypted notes, send value privately to other users, and withdraw back to public Stellar accounts — with zero-knowledge proofs verified on-chain via Soroban smart contracts.
+**Veilum** is a private stablecoin payment protocol on Stellar. Users shield public tokens into encrypted notes, send value privately inside a zero-knowledge pool, and withdraw to public Stellar accounts when they choose — with proofs verified on-chain via Soroban smart contracts.
+
+> Shield. Send privately. Withdraw on your terms — with on-chain proof, not blind trust.
 
 Built on Stellar Soroban, Veilum brings shielded-pool privacy to the assets and rails Stellar already excels at: fast settlement, low fees, and regulated stablecoins (USDC, EURC, and others).
+
+**Status:** Functional prototype on testnet/devnet. Not audited for production.
+
+---
+
+## Table of contents
+
+- [Why Veilum](#why-veilum)
+- [What Veilum is and is not](#what-veilum-is-and-is-not)
+- [Product surfaces](#product-surfaces)
+- [Core flows](#core-flows)
+- [Keys, identity, and shielded addresses](#keys-identity-and-shielded-addresses)
+- [Channels and subchannels](#channels-and-subchannels)
+- [Architecture](#architecture)
+- [Smart contracts](#smart-contracts)
+- [Zero-knowledge circuits](#zero-knowledge-circuits)
+- [Cryptographic stack](#cryptographic-stack)
+- [Association Set Provider (ASP)](#association-set-provider-asp)
+- [Relayer](#relayer)
+- [Web dashboard](#web-dashboard)
+- [Supported assets](#supported-assets)
+- [Privacy model](#privacy-model)
+- [Quickstart](#quickstart)
+- [Configuration](#configuration)
+- [Toolchain versions](#toolchain-versions)
+- [Scripts and E2E](#scripts-and-e2e)
+- [Known limitations](#known-limitations)
+- [Documentation](#documentation)
+- [Repository layout](#repository-layout)
 
 ---
 
@@ -12,16 +43,53 @@ Public blockchains make payments transparent by default. Every transfer reveals 
 
 Stellar already moves stable value efficiently. What it lacks is a native way to pay privately without leaving the network. Veilum fills that gap:
 
-- **Private transfers** — recipients receive shielded notes; sender identity and amount are not revealed in the transfer transaction.
-- **Multi-asset support** — one pool custodies multiple enabled Stellar tokens; each note is bound to a specific asset via a public token field.
-- **On-chain verification** — spend authorization is enforced by UltraHonk zero-knowledge proofs verified inside Soroban, not by trusted intermediaries.
-- **Relayer-friendly** — private sends can be submitted by a relayer so the user's wallet is not the on-chain signer, improving metadata hygiene.
-- **Composable with Stellar** — shield and unshield remain standard token transfers; only the private layer uses ZK.
+| Capability | Description |
+|------------|-------------|
+| **Private transfers** | Recipients receive shielded notes; sender identity, recipient Stellar address, and amount are not revealed in the transfer transaction |
+| **Multi-asset support** | One pool custodies multiple enabled Stellar tokens; each note is bound to a specific asset via a public token field |
+| **On-chain verification** | Spend authorization is enforced by UltraHonk zero-knowledge proofs verified inside Soroban, not by trusted intermediaries |
+| **Relayer-friendly** | Private sends and unshields are submitted by a relayer so the user's wallet is not the on-chain signer |
+| **Boundary compliance** | Optional Association Set Provider (ASP) gates who may shield in and unshield out without deanonymizing internal transfers |
+| **Composable with Stellar** | Shield and unshield remain standard token transfers; only the private layer uses ZK |
 
+### Target users
+
+- Freelancers and contractors receiving private USDC
+- Payers sending to counterparties without exposing Stellar payment history
+- Treasury and ops teams moving funds with less on-chain leakage
+- Developers evaluating shielded payments on Stellar testnet
 
 ---
 
-## How it works
+## What Veilum is and is not
+
+| Veilum **is** | Veilum **is not** |
+|---------------|-------------------|
+| A shielded pool on Stellar Soroban | A mixer or anonymity tool for obfuscation |
+| Transaction privacy for internal transfers | Full anonymity — deposits and withdrawals are public |
+| A browser wallet with locally derived keys | A custodian of user spending keys |
+| A relayer-submitted ZK payment layer | A replacement for Stellar's public payment rail |
+
+---
+
+## Product surfaces
+
+Veilum ships as a monorepo with marketing pages, a dashboard app, backend services, on-chain contracts, and ZK circuits.
+
+| Surface | Path | Purpose |
+|---------|------|---------|
+| **Marketing site** | `apps/web/` routes `/`, `/about`, `/how-to-use` | Explain the protocol, privacy boundaries, drive users to the dashboard |
+| **Dashboard** | `apps/web/` routes `/dashboard/*` | Wallet connect, shield, transfer, unshield, notes, keys, faucet |
+| **ASP Admin** | `/dashboard/asp-admin` | Operator approve/deny queue (when ASP is enabled) |
+| **Relayer** | `services/relayer/` (:8787) | Submit private transfers and unshields to Soroban |
+| **ASP service** | `services/asp/` (:8788) | Membership registry, screening, on-chain approve/deny |
+| **SDK** | `packages/sdk/` | Hashing, keys, routing crypto, proofs, relayer client |
+| **Contracts** | `packages/contracts/` | Pool, Merkle tree, verifier, ASP suite |
+| **Circuits** | `packages/circuits/`, `circuits-asp/` | Noir UltraHonk spend proofs |
+
+---
+
+## Core flows
 
 ### Lifecycle
 
@@ -33,78 +101,203 @@ Public balance  ──shield──▶  Shielded note (in Merkle tree)
                                     └── unshield ──▶  Public balance (recipient + amount visible)
 ```
 
-| Action | On-chain visibility |
-|--------|---------------------|
-| **Shield (deposit)** | Visible: depositor address, token, amount |
-| **Private transfer** | Visible: nullifiers, output commitments, encrypted route payload. Hidden: sender, recipient Stellar address, transfer amount |
-| **Unshield (withdraw)** | Visible: recipient address, amount, nullifier, change commitment. Hidden: which prior notes funded the withdrawal |
+### On-chain visibility
 
-### Notes and keys
+| Action | Signer | On-chain visibility |
+|--------|--------|---------------------|
+| **Shield (deposit)** | User wallet | Visible: depositor address, token, amount |
+| **Private transfer** | Relayer | Visible: nullifiers, output commitments, encrypted route events. Hidden: sender, recipient Stellar address, amount |
+| **Unshield (withdraw)** | Relayer | Visible: recipient address, amount, nullifier, change commitment. Hidden: which prior notes funded the withdrawal |
 
-A **shielded note** is a commitment to `(owner_pk, token, amount, blinding)` hashed with Poseidon2. Only the holder of the **spending key** can spend it; the **viewing key** lets a wallet scan encrypted route events and decrypt incoming notes.
+### Shield
+
+1. User selects token and amount in the dashboard
+2. Client builds a note commitment and ECDH-encrypts note plaintext for self
+3. User wallet signs `shielded-pool.shield_routed` (token approval + deposit)
+4. Pool custodies tokens and inserts commitment into the Merkle tree
+5. Encrypted note published as a Soroban route event
+
+ASP is enforced, the user must be approved and include an ASP membership proof in `asp_meta`.
+
+### Private transfer
+
+1. Client syncs Merkle tree from chain and selects an unspent note
+2. Client builds recipient + change output notes, encrypts both, generates UltraHonk proof (`mode = 0`)
+3. Client sends proof payload to relayer (`POST /relay/shielded-transfer`)
+4. Relayer submits `shielded-pool.shielded_transfer_routed`
+5. Pool verifies proof, marks nullifier spent, inserts two new commitments, publishes two route events
+
+No ASP check on internal transfers.
+
+### Unshield
+
+1. Client selects note, withdrawal amount, and public Stellar recipient (`G…`)
+2. Client generates proof (`mode = 1`) with public recipient field and amount
+3. Relayer submits via legacy `shielded-pool.unshield` or ASP path `asp-gate.unshield_asp`
+4. Pool transfers public tokens to recipient; optional change note stays shielded
+
+---
+
+## Keys, identity, and shielded addresses
+
+### Note model
+
+A **shielded note** is a commitment to `(owner_pk, token, amount, blinding)` hashed with Poseidon2:
+
+```
+commitment = hash4(owner_pk, token_field, amount, blinding)
+nullifier  = hash2(spending_key, commitment)
+owner_pk   = hash2(spending_key, 1)
+```
+
+Only the holder of the **spending key** can spend a note. The **viewing key** (secp256k1) decrypts incoming routed notes.
+
+### Key derivation
 
 Keys are derived locally from a one-time wallet signature — they never leave the browser.
 
-Recipients share a **shielded address** (`shd_…`) encoding their viewing public key. Senders paste this address to route an encrypted note without knowing the recipient's Stellar account.
+1. User signs: `"Stellar shielded key derivation consent (deterministic, no transaction)"`
+2. `keySeed = SHA256("stellar-shielded-wallet-seed-v1" || address || signature)`
+3. `spending_key` ← BN254 scalar from seed
+4. `viewingPriv` ← secp256k1 scalar from seed
+5. `owner_pk = hash2(spending_key, 1)`
+6. `viewingPub = secp256k1_pubkey(viewingPriv)` (compressed, 33 bytes)
 
-### Routing and discovery
+Implementation: `apps/web/src/lib/keys.ts`, `packages/sdk/src/keys.ts`.
 
-Private transfers publish **routed notes**: ECDH-encrypted note plaintext tagged with `(channel, subchannel)` derived from the recipient's viewing key. Wallets scan pool events, filter by channel, decrypt owned notes, and reconcile balances against on-chain nullifier state.
+### Shielded receive address (`shd_…`)
 
-A **relayer** service accepts signed proof payloads over HTTP and submits the Soroban transaction, so the sender's Stellar address does not appear as the transaction source.
+Recipients share a **shielded address** so senders can route encrypted notes without knowing the recipient's Stellar account.
+
+**Format:** `shd_` + base64url(payload + checksum)
+
+| Field | Size | Description |
+|-------|------|-------------|
+| version | 1 byte | Format version (= 1) |
+| network_id | 4 bytes | 1=local, 2=futurenet, 3=testnet, 4=mainnet |
+| owner_pk | 32 bytes | BN254 public identity |
+| viewing_pub | 33 bytes | Compressed secp256k1 viewing key |
+| checksum | 4 bytes | `keccak256(payload)[0:4]` |
+
+Implementation: `apps/web/src/lib/shielded-address.ts`.
+
+---
+
+## Channels and subchannels
+
+Private transfers deliver encrypted note plaintext via Soroban events without revealing the recipient's Stellar address. Routing identifiers are derived from the recipient's viewing public key:
+
+```
+channel    = keccak256(viewingPub)
+subchannel = keccak256(channel || uint64_be(subchannelId))
+```
+
+Each wallet maintains a monotonic **route cursor** (`subchannelId`), incremented on each shield, transfer, or unshield.
+
+**On-chain event:**
+```
+topic: ("route", channel, subchannel)
+data:  encrypted_note (ECDH + AES-256-GCM envelope)
+```
+
+Wallets scan pool events, filter by their channel, try subchannel indices in a scan window, ECDH-decrypt candidates, and reconcile against the on-chain nullifier set.
+
+Implementation: `packages/sdk/src/routing.ts`, `apps/web/src/lib/scan.ts`, `apps/web/src/lib/wallet-sync.ts`.
 
 ---
 
 ## Architecture
 
 ```
-privacy/
-├── packages/
-│   ├── circuits/              Noir shielded_transfer circuit (Poseidon2, depth-20 Merkle)
-│   ├── note-hash/             Auxiliary Noir circuit for note commitments (hash4)
-│   ├── hash2/                 Poseidon2 hash2 helper circuit
-│   ├── config/                Network definitions (local | futurenet | testnet | mainnet)
-│   ├── sdk/                   Poseidon hashing, key derivation, proof CLI, routing crypto
-│   ├── contract-clients/      Generated TypeScript bindings for Soroban contracts
-│   └── contracts/
-│       ├── merkle-tree/       Incremental Poseidon2 Merkle tree (Noir-compatible)
-│       ├── mock-token/        Mintable SAC-style token for devnet / E2E
-│       ├── shielded-pool/     Multi-token pool: shield, transfer, unshield
-│       └── rs-soroban-ultrahonk/  On-chain UltraHonk proof verifier
-├── apps/web/                  Veilum dashboard (shield, transfer, unshield, notes)
-├── services/relayer/          HTTP relayer for private transaction submission
-└── scripts/
-    ├── build-circuits.sh      Compile Noir circuits → UltraHonk VK + web artifacts
-    ├── deploy-stables.mjs     Deploy USDC, EURC, YLDS, MGUSD test tokens
-    ├── devnet-e2e.mjs         Full deploy + shield + private transfer E2E
-    └── generate-contract-bindings.mjs
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Browser / SDK                                                           │
+│  Wallet connect · key derivation · proving (Noir.js + bb.js) · note scan │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │ HTTP (private ops)  │  Soroban RPC (shield)
+┌───────────────────────────────┼─────────────────────────────────────────┐
+│  Services                     │                                          │
+│  Relayer :8787                │  ASP :8788                               │
+│  · shielded-transfer          │  · register / approve / deny             │
+│  · unshield                   │  · fund-source screening                   │
+│  · CLI proof generation       │  · Merkle path API                       │
+└───────────────────────────────┼─────────────────────────────────────────┘
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Soroban (on-chain)                                                      │
+│  shielded-pool · merkle-tree · rs-soroban-ultrahonk · asp-*             │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Smart contracts
+### Monorepo layout
+
+```
+privacy/
+├── packages/
+│   ├── circuits/              # shielded_transfer (12 public inputs)
+│   ├── circuits-asp/          # shielded_transfer_asp (14 public inputs)
+│   ├── note-hash/, hash2/, hash3/  # Auxiliary Noir hash circuits
+│   ├── config/                # networks.json
+│   ├── sdk/                   # Hashing, keys, routing, proofs, ASP, relayer client
+│   ├── contract-clients/      # Generated TypeScript bindings
+│   └── contracts/
+│       ├── merkle-tree/       # Incremental Poseidon2 tree (depth 20)
+│       ├── shielded-pool/     # Multi-token pool: shield, transfer, unshield
+│       ├── asp-membership/    # Depth-10 allow-tree for ASP
+│       ├── asp-deny/          # Deny map by owner_pk
+│       ├── asp-gate/          # ASP unshield verifier + pool callback
+│       ├── mock-token/        # Mintable SAC for devnet / E2E
+│       └── rs-soroban-ultrahonk/  # On-chain UltraHonk verifier
+├── apps/web/                  # Marketing site + dashboard
+├── services/
+│   ├── relayer/               # HTTP relayer (:8787)
+│   └── asp/                   # ASP compliance service (:8788)
+├── docs/                      # Architecture, product, technical paper
+└── scripts/                   # Build, deploy, E2E
+```
+
+---
+
+## Smart contracts
 
 | Contract | Role |
 |----------|------|
-| **shielded-pool** | Custodies enabled tokens; `shield_routed`, `shielded_transfer_routed`, `unshield`; nullifier set; cross-contract UltraHonk `verify_proof` |
-| **merkle-tree** | Incremental Poseidon2 tree, depth 20, 30-root history window, `insert` / `is_known_root` / `get_last_root` |
-| **rs-soroban-ultrahonk** | Verifies UltraHonk proofs on Soroban (456 × 32 byte proofs, 12 public inputs) |
-| **tokens** | Simple mint / transfer / approve SAC for local and devnet testing |
+| **shielded-pool** | Custodies enabled tokens; `shield_routed`, `shielded_transfer_routed`, `unshield`, `fulfill_unshield`; nullifier set; ASP shield gate |
+| **merkle-tree** | Incremental Poseidon2 tree, depth 20, 30-root history; `insert`, `is_known_root`, `get_last_root` |
+| **rs-soroban-ultrahonk** | Verifies UltraHonk proofs (456 × 32 bytes; 12 or 14 public inputs depending on VK) |
+| **asp-membership** | Append-only Merkle allow-tree (depth 10) of approved `owner_pk` leaves |
+| **asp-deny** | Persistent deny map keyed by `owner_pk` |
+| **asp-gate** | Verifies 14-input ASP unshield proof + deny check + calls `pool.fulfill_unshield` |
+| **mock-token** | Mintable SAC-style token for local and devnet testing |
 
-External tokens are custodied in the pool. Each enabled token maps to a BN254 **token field**: `sha256(contract_id)`, high byte cleared. The field is a public input to the circuit so notes cannot be cross-asset confused.
+External tokens are custodied in the pool. Each enabled token maps to a BN254 **token field**:
 
-### Zero-knowledge circuit
+```
+token_field = sha256(contract_id_strkey) with high byte cleared
+```
 
-The `shielded_transfer` Noir circuit proves:
+The field is a public circuit input so notes cannot be cross-asset confused.
 
-- Merkle membership of input note commitment(s) against the published root
-- Correct nullifier derivation: `hash2(spending_key, commitment)`
-- Valid output note commitments for recipient and change
+**Nullifiers:** Persistent map `Nullifier(bytes32) → true`. Zero nullifiers rejected; double-spend rejected.
+
+---
+
+## Zero-knowledge circuits
+
+### `shielded_transfer` (standard)
+
+Proves:
+
+- Merkle membership of 1–2 input notes (depth 20)
+- Correct nullifier: `hash2(spending_key, commitment)`
+- Valid output commitments for recipient + change
 - Value conservation on transfer (`mode = 0`)
 - Partial or full unshield with private change note (`mode = 1`)
 
-**Public inputs (12 × 32 bytes):**
+**Proof size:** 456 × 32 = 14,592 bytes  
+**Public inputs:** 12 × 32 = 384 bytes
 
-| Index | Transfer | Unshield |
-|-------|----------|----------|
+| Index | Transfer (mode=0) | Unshield (mode=1) |
+|-------|-------------------|-------------------|
 | 0 | token field | token field |
 | 1 | merkle root | merkle root |
 | 2–3 | nullifiers | nullifier + zero |
@@ -113,34 +306,171 @@ The `shielded_transfer` Noir circuit proves:
 | 8 | mode (= 0) | mode (= 1) |
 | 9–11 | zero | recipient field, amount, token field |
 
-Poseidon2 hashing matches between Noir (`dep::poseidon`), the on-chain Merkle tree (`soroban-poseidon`), and the TypeScript SDK.
+### `shielded_transfer_asp` (ASP unshield)
 
-### Supported assets
+Extends the standard circuit with ASP Merkle membership (depth 10):
 
-Veilum targets Stellar-native stablecoins. The web app and deploy scripts support:
+```
+asp_leaf = hash3(owner_pk, membership_blinding, domain=2)
+```
 
-- **USDC** — USD Coin
-- **EURC** — Euro Coin
-- **YLDS** — Figure YLDS
-- **MGUSD** — MoneyGram USD
+Adds public inputs 12 (`asp_membership_root`) and 13 (`owner_pk_public`). Used for ASP-gated unshield only.
 
-On devnet/testnets these are deployed as mock SAC tokens via `scripts/deploy-stables.mjs`. On mainnet, we enable real token contract addresses.
+### Auxiliary circuits
 
-### Privacy model
+| Circuit | Purpose |
+|---------|---------|
+| `note-hash` | `hash4(owner, token, amount, blinding)` |
+| `hash2` | Poseidon2 two-input hash |
+| `hash3` | Poseidon2 three-input hash (ASP leaves) |
 
-**Protected in private transfers:**
+Poseidon2 must match across Noir, `soroban-poseidon` (on-chain), and the SDK.
+
+---
+
+## Cryptographic stack
+
+| Primitive | Algorithm | Usage |
+|-----------|-----------|-------|
+| Note / Merkle / nullifier hashing | Poseidon2 (BN254 field) | Commitments, tree nodes, nullifiers, owner_pk |
+| ZK proofs | UltraHonk (Barretenberg, Keccak transcript) | Spend authorization |
+| Note encryption | ECDH (secp256k1) + HKDF-SHA256 + AES-256-GCM | Routed note delivery |
+| Routing IDs | Keccak-256 | Channel and subchannel derivation |
+| Key derivation | SHA-256 | Wallet seed and scalar derivation |
+| Shielded address checksum | Keccak-256 | `shd_` integrity |
+| Token / recipient fields | SHA-256 (high byte cleared) | Asset and Stellar address binding in circuit |
+
+**Toolchain lock:** Nargo 1.0.0-beta.9 + Barretenberg bb v0.87.0 (`--oracle_hash keccak`) + `@aztec/bb.js` 0.87.0. Mismatched versions fail on-chain verification.
+
+**Proving paths:**
+
+| Environment | Method | Reliability |
+|-------------|--------|-------------|
+| Browser | Noir.js + `@aztec/bb.js` | May diverge from on-chain verifier |
+| Relayer / E2E | `nargo execute` + `bb prove` (CLI) | Matches on-chain verifier |
+
+The relayer accepts `proofInputs` and generates proofs via CLI for reliable submission.
+
+---
+
+## Association Set Provider (ASP)
+
+ASP controls **who may cross the pool boundary** (shield in, unshield out). It does not deanonymize internal private transfers.
+
+```
+  Public Stellar          │  Shielded pool (ZK transfers)  │  Public Stellar
+                          │                                │
+  User ──shield──────────►│  Alice ──private send──► Bob   │  ◄──unshield── Bob
+         ▲                │   (no ASP check)             │        ▲
+    ASP membership        │                                │   ASP membership
+    + deny list           │                                │   + deny list
+```
+
+### Three enforcement layers
+
+| Layer | Component | Scope |
+|-------|-----------|-------|
+| Off-chain | ASP service (:8788) | Registry, screening, Merkle path API |
+| Relayer | `GET /asp/check/:ownerPk` | Blocks unshield for denied/unapproved users |
+| On-chain | `asp-membership`, `asp-deny`, `asp-gate` | Cryptographic membership proof + deny map |
+
+### ASP HTTP API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /asp/register` | Queue user by `owner_pk` |
+| `POST /asp/approve` | Admin approve + on-chain `insert_member` |
+| `POST /asp/deny` | Admin deny + on-chain `deny` |
+| `POST /asp/screen` | Horizon fund-source scan → auto approve/deny |
+| `GET /asp/check/:ownerPk` | Relayer gate (200/403) |
+| `GET /asp/status/:ownerPk` | UI status |
+| `GET /asp/path/:ownerPk` | Merkle siblings for shield/unshield proofs |
+| `GET /asp/pending` | Admin queue |
+
+When `ASP_AUTO_SCREEN=1`, the ASP service scans inbound Horizon payments for known-bad funders before granting membership.
+
+Full architecture: [`docs/asp-architecture.md`](docs/asp-architecture.md).
+
+---
+
+## Relayer
+
+The relayer submits private operations to Soroban so the user's Stellar address is not the transaction source.
+
+| Endpoint | Method | Status |
+|----------|--------|--------|
+| `/relay/shielded-transfer` | POST | Active |
+| `/relay/unshield` | POST | Active |
+| `/relay/status/:id` | GET | Poll tx confirmation |
+| `/relay/shield` | POST | **Disabled (410)** — shield requires depositor wallet auth |
+
+**Why shield is not relayer-submitted:** A relayer-signed shield would link the deposit to the relayer's Stellar address instead of the user's.
+
+Configuration: `services/relayer/.env` (see [Configuration](#configuration)).
+
+---
+
+## Web dashboard
+
+### Marketing routes
+
+| Route | Page |
+|-------|------|
+| `/` | Home — value prop, CTA to dashboard |
+| `/about` | Protocol overview and privacy boundaries |
+| `/how-to-use` | Step-by-step user guide |
+
+### Dashboard routes
+
+| Route | Page |
+|-------|------|
+| `/dashboard` | Balances, notes preview, activity, relayer status |
+| `/dashboard/shield` | Deposit public tokens into shielded notes |
+| `/dashboard/transfer` | Private transfer to `shd_…` address |
+| `/dashboard/unshield` | Withdraw to public Stellar address |
+| `/dashboard/notes` | All discovered notes (unspent/spent) |
+| `/dashboard/keys` | Shielded receive address + key management |
+| `/dashboard/faucet` | Testnet token mint (dev only) |
+| `/dashboard/asp-admin` | ASP operator approve/deny queue |
+
+**Wallets:** Freighter, xBull, Albedo, Lobstr, and others via Stellar Wallets Kit.
+
+**Privacy UX:** Every action surfaces what is public vs private on-chain. See [`PRODUCT.md`](PRODUCT.md) and [`docs/veilum-product-brief.md`](docs/veilum-product-brief.md) for copy and design guidance.
+
+---
+
+## Supported assets
+
+| Symbol | Name | Notes |
+|--------|------|-------|
+| **USDC** | USD Coin | Primary default |
+| **EURC** | Euro Coin | |
+| **YLDS** | Figure YLDS | Testnet mock |
+| **MGUSD** | MoneyGram USD | Testnet mock |
+
+On devnet/testnet, mock SAC tokens are deployed via `scripts/deploy-stables.mjs`. On mainnet, the pool owner enables real token contract addresses.
+
+---
+
+## Privacy model
+
+### Protected in private transfers
+
 - Sender Stellar address (relayer submits the tx)
 - Recipient Stellar address
 - Transfer amount
+- Which input notes funded the transfer (beyond nullifier linkage)
 
-**Still visible on-chain:**
-- Nullifiers (link spends of the same note, not identities)
+### Still visible on-chain
+
+- Nullifiers (link spends of the same note, not identities directly)
 - Output note commitments
 - Encrypted route events (channel/subchannel clustering)
 - Merkle tree shape (`FilledSubtrees`, leaf count)
 - Shield and unshield metadata (by design — deposit and exit are public)
+- Relayer transaction source and timing
 
-Veilum provides **transaction privacy**, not full anonymity. Advanced adversaries may correlate timing, relayer activity, and nullifier graphs.
+Veilum provides **transaction privacy**, not full anonymity. Advanced adversaries may correlate timing, relayer activity, nullifier graphs, and channel clustering.
 
 ---
 
@@ -153,14 +483,23 @@ Veilum provides **transaction privacy**, not full anonymity. Advanced adversarie
 - Rust + `wasm32v1-none` target
 - Node.js 20+
 
-### Build and E2E (Futurenet)
+Ensure `nargo` and `bb` are on `PATH` (e.g. `~/.nargo/bin`, `~/.bb/bin`).
+
+### Install and build
 
 ```bash
 cd privacy
 npm install
 npm run build:sdk
 npm run build:circuits
+npm run build:circuits:asp   # if using ASP
 npm run build:contracts
+npm run generate:bindings
+```
+
+### E2E (Futurenet)
+
+```bash
 STELLAR_NETWORK=futurenet npm run e2e:devnet
 ```
 
@@ -170,23 +509,34 @@ Local Stellar quickstart container:
 STELLAR_NETWORK=local npm run e2e:local
 ```
 
-### Run the web app
+ASP full flow:
+
+```bash
+npm run e2e:asp
+```
+
+### Run locally
 
 ```bash
 # Terminal 1 — relayer
 npm run dev:relayer
 
-# Terminal 2 — dashboard
+# Terminal 2 — ASP (optional)
+npm run dev --workspace @stellar-shielded/asp
+
+# Terminal 3 — dashboard
 npm run dev:web
 ```
 
-Open the dashboard, connect a Stellar wallet (Freighter, xBull, Albedo, etc.), sign the one-time key derivation, and use **Shield → Transfer → Unshield**.
+Open the dashboard, connect a Stellar wallet, sign the one-time key derivation, and use **Shield → Transfer → Unshield**.
 
-Set `VITE_RELAYER_URL` if the relayer is not at `http://127.0.0.1:8787`.
+Set `VITE_RELAYER_URL` if the relayer is not at `http://127.0.0.1:8787`. Set `VITE_ASP_URL` if ASP is enabled.
 
 ---
 
-## Network configuration
+## Configuration
+
+### Network
 
 Edit `packages/config/networks.json`. Select a network with `STELLAR_NETWORK`:
 
@@ -197,13 +547,51 @@ Edit `packages/config/networks.json`. Select a network with `STELLAR_NETWORK`:
 | `testnet` | Stellar testnet |
 | `mainnet` | Production |
 
-Deployment addresses are written to `scripts/deployment.json` (gitignored) and copied to `apps/web/public/deployment.json` for the web app.
+Deployment addresses are written to `scripts/deployment.json` (gitignored) and copied to `apps/web/public/deployment.json`.
+
+### Environment variables
+
+**Root `.env`** (E2E / deploy scripts):
+
+| Variable | Purpose |
+|----------|---------|
+| `STELLAR_NETWORK` | Network selection |
+| `SOURCE_ACCOUNT` / `STELLAR_SECRET_KEY` | Deployer / admin |
+| `RELAYER_URL` | Relayer HTTP endpoint for E2E |
+| `SKIP_DEPLOY`, `SKIP_VERIFIER_DEPLOY` | Reuse existing deployment |
+
+**Relayer** (`services/relayer/.env`):
+
+| Variable | Purpose |
+|----------|---------|
+| `RELAYER_SECRET_KEY` | Signs Soroban transactions |
+| `RELAYER_PORT` | Default 8787 |
+| `ASP_ENFORCE` | `1` to gate unshield via ASP |
+| `ASP_SERVICE_URL` | ASP HTTP base URL |
+| `ASP_GATE_CONTRACT` | ASP gate contract ID |
+
+**ASP** (`services/asp/.env`):
+
+| Variable | Purpose |
+|----------|---------|
+| `ASP_ADMIN_TOKEN` | Admin API bearer token |
+| `ASP_SOURCE_ACCOUNT` | Signs `insert_member` / `deny` |
+| `ASP_MEMBERSHIP_CONTRACT`, `ASP_DENY_CONTRACT` | On-chain ASP contracts |
+| `ASP_AUTO_SCREEN` | `1` for Horizon fund-source screening |
+
+**Web** (`apps/web/.env`):
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_RELAYER_URL` | Relayer endpoint |
+| `VITE_ASP_URL` | ASP service endpoint |
+| `VITE_ASP_ADMIN_TOKEN` | ASP admin UI token |
 
 ---
 
 ## Toolchain versions
 
-UltraHonk on Soroban requires proofs generated with matching toolchain versions:
+UltraHonk on Soroban requires proofs generated with matching toolchain versions. Upgrade these together:
 
 | Tool | Version |
 |------|---------|
@@ -211,23 +599,65 @@ UltraHonk on Soroban requires proofs generated with matching toolchain versions:
 | Barretenberg `bb` | v0.87.0 with `--oracle_hash keccak` |
 | `@aztec/bb.js` | 0.87.0 |
 | `@noir-lang/noir_js` | 1.0.0-beta.9 |
+| `soroban-sdk` | 25.0.2 |
+| `@stellar/stellar-sdk` | ^14.1.0 |
 
-Upgrade Nargo, `bb`, or the verifier contract together — mismatched versions will fail proof verification.
+Mismatched Nargo, `bb`, or verifier VK will cause on-chain `VerificationFailed`.
 
 ---
 
-## Repository layout (key paths)
+## Scripts and E2E
+
+| Script | Command | Purpose |
+|--------|---------|---------|
+| Build circuits | `npm run build:circuits` | Compile Noir → UltraHonk VK + web artifacts |
+| Build ASP circuits | `npm run build:circuits:asp` | ASP unshield circuit |
+| Build contracts | `npm run build:contracts` | Build all Soroban WASM |
+| Generate bindings | `npm run generate:bindings` | TypeScript contract clients |
+| Deploy stables | `npm run deploy:stables` | USDC, EURC, YLDS, MGUSD mocks |
+| E2E devnet | `npm run e2e:devnet` | Deploy + shield + private transfer |
+| E2E ASP | `npm run e2e:asp` | Full ASP compliance flow |
+| E2E local | `npm run e2e:local` | Quickstart container E2E |
+
+---
+
+## Known limitations
+
+| Area | Limitation |
+|------|------------|
+| **Privacy** | Transaction privacy only; shield/unshield are public; nullifier and channel clustering visible |
+| **Audits** | `rs-soroban-ultrahonk` verifier not audited |
+| **Proving** | Browser `bb.js` proofs may fail on-chain; relayer CLI proving is the reliable path |
+| **Fees** | Fee infrastructure exists in circuit/contract but wallet flow uses `fee = 0` |
+| **ASP** | No membership check on private transfers; off-chain registry can drift from chain |
+| **Capacity** | Merkle tree depth 20 (max ~1M notes); ASP tree depth 10 (max 1024 members) |
+| **Operations** | Single-process relayer/ASP; no HA or rate limiting in prototype |
+| **Mainnet** | Architecture implemented; production legal/compliance process out of scope |
+
+---
+
+## Repository layout
 
 | Path | Description |
 |------|-------------|
 | `packages/circuits/src/main.nr` | Main shielded transfer circuit |
-| `packages/contracts/shielded-pool/src/lib.rs` | Pool contract implementation |
+| `packages/circuits-asp/src/main.nr` | ASP unshield circuit |
+| `packages/contracts/shielded-pool/src/lib.rs` | Pool contract |
 | `packages/contracts/merkle-tree/src/lib.rs` | Incremental Merkle tree |
-| `packages/sdk/src/` | Hashing, keys, routing encryption, proof helpers |
-| `apps/web/src/lib/merkle-sync.ts` | Rebuild Merkle leaves from chain events |
-| `apps/web/src/lib/wallet-sync.ts` | Chain-first note scan and nullifier recheck |
-| `apps/web/src/lib/shield-ops.ts` | Build shield / transfer / unshield transactions |
+| `packages/contracts/asp-*/` | ASP membership, deny, gate |
+| `packages/sdk/src/` | Hashing, keys, routing, proofs, ASP, relayer |
+| `apps/web/src/lib/shield-ops.ts` | Shield / transfer / unshield builders |
+| `apps/web/src/lib/merkle-sync.ts` | Rebuild Merkle leaves from chain |
+| `apps/web/src/lib/wallet-sync.ts` | Note scan and nullifier recheck |
+| `apps/web/src/lib/shielded-address.ts` | `shd_` encode/decode |
+| `apps/web/src/lib/proving.ts` | Browser UltraHonk proving |
 | `services/relayer/src/server.js` | Relayer HTTP API |
+| `services/asp/` | ASP compliance service |
+| `scripts/devnet-e2e.mjs` | Full deploy + shield + transfer E2E |
+| `scripts/asp-e2e.mjs` | ASP E2E |
 
 ---
 
+## License
+
+See individual package licenses. UltraHonk verifier crate: MIT (`packages/contracts/rs-soroban-ultrahonk`).
