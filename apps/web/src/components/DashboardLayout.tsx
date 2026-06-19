@@ -19,11 +19,20 @@ import {
   IconX,
 } from "./ui/icons";
 import { useWallet } from "../hooks/use-wallet";
+import { WalletConnectionProvider, useWalletConnection } from "../hooks/use-wallet-connection";
 import { isAspOperator } from "../lib/asp-admin";
 import { DASHBOARD_PAGE_META, dashboardNavGroups } from "../lib/dashboard-routes";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 export function DashboardLayout() {
+  return (
+    <WalletConnectionProvider>
+      <DashboardLayoutInner />
+    </WalletConnectionProvider>
+  );
+}
+
+function DashboardLayoutInner() {
   useShieldedSync();
   const location = useLocation();
   const { address: wallet } = useWallet();
@@ -82,6 +91,8 @@ export function DashboardLayout() {
   function closeNav() {
     setNavOpen(false);
   }
+
+  const showConnectBanner = !wallet && location.pathname !== "/dashboard";
 
   return (
     <div className={`dashboard-shell${navOpen ? " dashboard-shell--nav-open" : ""}`}>
@@ -177,7 +188,7 @@ export function DashboardLayout() {
 
         <div className="dashboard-page">
           <PageHeader title={pageMeta.title} description={description} meta={pageMetaLine} />
-          <ConnectPrompt />
+          {showConnectBanner ? <ConnectPrompt /> : null}
           <Outlet />
         </div>
       </div>

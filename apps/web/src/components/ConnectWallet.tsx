@@ -1,103 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDefaultStore } from "jotai";
 
-import { WalletConnectButton } from "./ui/WalletConnectButton";
 import { loadNetworkConfig } from "../lib/config";
-import { deriveOwnerPk, getBrowserPoseidonHasher } from "../lib/hasher";
-import {
-  deriveUserKeys,
-  keySeedFromWalletSignature,
-  SHIELD_KEY_DERIVATION_CONSENT_MESSAGE,
-  viewingPrivToPub,
-} from "../lib/keys";
+import { viewingPrivToPub } from "../lib/keys";
 import { fetchRelayerHealth } from "../lib/relayer";
-import {
-  connectWallet,
-  disconnectWalletKit,
-  ensureWalletNetwork,
-  initWalletKit,
-  signWalletMessage,
-} from "../lib/wallet-kit";
-import { refreshShieldedWallet, type WalletRefreshMode } from "../lib/wallet-sync";
-import { BACKGROUND_POLL_MS, pickRefreshMode, scanCacheKey } from "../lib/scan-cache";
+import { applyRefreshResult, BACKGROUND_POLL_MS } from "../lib/sync-shielded-now";
+import { pickRefreshMode, scanCacheKey } from "../lib/scan-cache";
 import { scanDebug, scanDebugWarn } from "../lib/scan-debug";
 import { mergeNotes, shieldedTotal } from "../lib/note-store";
+import { refreshShieldedWallet, type WalletRefreshMode } from "../lib/wallet-sync";
+import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { useWallet } from "../hooks/use-wallet";
 import { useShieldedStore } from "../store/use-shielded-store";
-import { walletAddressAtom } from "../store/wallet-atoms";
-
-function applyRefreshResult(
-  result: Awaited<ReturnType<typeof refreshShieldedWallet>>,
-  cacheKey?: string
-) {
-  const state = useShieldedStore.getState();
-  if (result.mode === "full") {
-    state.setNotes(result.notes);
-    state.setShieldedBalance(result.shieldedBalance);
-  } else if (result.notes.length > 0) {
-    const merged = mergeNotes(state.notes, result.notes);
-    state.setNotes(merged);
-    state.setShieldedBalance(shieldedTotal(merged));
-  }
-  state.setMerkleLeaves(result.merkleLeaves);
-  state.setSyncWarnings(result.warnings);
-  state.setSyncError(result.warnings.length ? result.warnings.join(" · ") : null);
-  if (cacheKey) {
-    state.setScanCacheEntry(cacheKey, result.scanCacheOut);
-  }
-}
+import { WalletConnectButton } from "./ui/WalletConnectButton";
 
 export function ConnectWallet() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { address: wallet, connect: setWallet, disconnect } = useWallet();
-  const network = useShieldedStore((s) => s.network);
-  const setKeys = useShieldedStore((s) => s.setKeys);
-  const keyMaterialAddress = useShieldedStore((s) => s.keyMaterialAddress);
-  const clearKeys = useShieldedStore((s) => s.clearKeys);
-
-  const connect = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      initWalletKit(network);
-      const config = await loadNetworkConfig(network);
-      const address = await connectWallet();
-      await ensureWalletNetwork(config);
-      setWallet(address);
-
-      if (keyMaterialAddress !== address) {
-        const signature = await signWalletMessage(SHIELD_KEY_DERIVATION_CONSENT_MESSAGE, address);
-        const seed = await keySeedFromWalletSignature(address, signature);
-        const keys = await deriveUserKeys(seed, "owner");
-        const hasher = await getBrowserPoseidonHasher();
-        const ownerPk = await deriveOwnerPk(hasher, keys.spendingKey);
-        const viewingPub = viewingPrivToPub(keys.viewingPriv);
-        setKeys({
-          spendingKey: keys.spendingKey,
-          viewingPriv: keys.viewingPriv,
-          viewingPub,
-          ownerPk,
-          address,
-        });
-        await syncShieldedWalletNow({ mode: "full" });
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [network, keyMaterialAddress, setKeys, setWallet]);
-
-  const handleDisconnect = useCallback(() => {
-    void disconnectWalletKit();
-    disconnect();
-    clearKeys();
-    useShieldedStore.getState().setSyncError(null);
-    useShieldedStore.getState().setSyncWarnings([]);
-  }, [disconnect, clearKeys]);
-
-  const showSyncKeys = !!(keyMaterialAddress && wallet && wallet !== keyMaterialAddress);
+  const { wallet, busy, error, connect, disconnect, showSyncKeys } = useWalletConnection();
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -105,7 +22,7 @@ export function ConnectWallet() {
         address={wallet}
         busy={busy}
         onConnect={() => void connect()}
-        onDisconnect={handleDisconnect}
+        onDisconnect={disconnect}
         onSyncKeys={() => void connect()}
         showSyncKeys={showSyncKeys}
       />
@@ -340,52 +257,4 @@ export function useShieldedSync() {
   ]);
 }
 
-export async function syncShieldedWalletNow(options?: {
-  syncMerkle?: boolean;
-  mode?: WalletRefreshMode;
-}): Promise<void> {
-  const state = useShieldedStore.getState();
-  const wallet = getDefaultStore().get(walletAddressAtom) ?? state.keyMaterialAddress;
-  if (!wallet || !state.viewingPub || !state.viewingKey || !state.spendingKey) return;
-  if (state.keyMaterialAddress && wallet !== state.keyMaterialAddress) return;
-
-  state.setScanRefreshing(true);
-  state.setSyncError(null);
-  try {
-    const config = await loadNetworkConfig(state.network);
-    const poolId = config.contracts.shieldedPool;
-    const deployLedger = config.contracts.deployLedger;
-    const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub, deployLedger);
-    const priorCache = state.getScanCacheEntry(cacheKey);
-    const result = await refreshShieldedWallet({
-      network: state.network,
-      wallet,
-      viewingKey: state.viewingKey,
-      viewingPub: state.viewingPub,
-      spendingKey: state.spendingKey,
-      existingNotes: state.notes,
-      priorScanCache: priorCache,
-      routeCursor: state.routeCursor,
-      mode: options?.mode ?? pickRefreshMode(priorCache, { hasNotes: state.notes.length > 0, deployLedger }),
-      syncMerkle: options?.syncMerkle ?? false,
-      onNotesReady: (notes, balance) => {
-        const syncMode = options?.mode ?? "incremental";
-        if (syncMode === "full") {
-          state.setNotes(notes);
-          state.setShieldedBalance(balance);
-        } else if (notes.length > 0) {
-          const merged = mergeNotes(state.notes, notes);
-          state.setNotes(merged);
-          state.setShieldedBalance(shieldedTotal(merged));
-        }
-        state.setScanLoading(false);
-      },
-    });
-    applyRefreshResult(result, cacheKey);
-  } catch (e) {
-    state.setSyncError(e instanceof Error ? e.message : String(e));
-  } finally {
-    state.setScanRefreshing(false);
-    state.setScanLoading(false);
-  }
-}
+export { syncShieldedWalletNow } from "../lib/sync-shielded-now";

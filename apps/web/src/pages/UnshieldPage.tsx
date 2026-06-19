@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { syncShieldedWalletNow } from "../components/ConnectWallet";
+import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
 import { ProofLoader } from "../components/ProofLoader";
 import { AmountField } from "../components/ui/AmountField";
 import { NotePicker } from "../components/ui/NotePicker";

@@ -7,7 +7,8 @@ import { TokenAmount } from "../components/ui/TokenAmount";
 import { TxRow } from "../components/ui/TxRow";
 import { IconDroplet, IconDownloadCloud, IconList, IconLock } from "../components/ui/icons";
 import { useTokenRegistry } from "../hooks/use-token-registry";
-import { useWallet } from "../hooks/use-wallet";
+import { DashboardConnectScreen } from "../components/ui/DashboardConnectScreen";
+import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { humanizeSyncError, noteStatusLabel } from "../lib/user-messages";
 import { summarizeUnspentBySymbol } from "../lib/token-labels";
 import { formatStableAmount, shortenAddress } from "../lib/utils";
@@ -32,7 +33,7 @@ function sortNewestFirst<T extends { createdAt?: string }>(items: T[]): T[] {
 }
 
 export function DashboardHome() {
-  const { address: wallet } = useWallet();
+  const { wallet, busy, connect } = useWalletConnection();
   const reveal = useShieldedStore((s) => s.revealBalances);
   const setReveal = useShieldedStore((s) => s.setRevealBalances);
   const relayerOk = useShieldedStore((s) => s.relayerOk);
@@ -67,6 +68,10 @@ export function DashboardHome() {
   function formatSummaryAmount(amount: bigint, symbol: string, show: boolean) {
     if (!show) return `${stableDenominationSymbol(symbol)}••••`;
     return formatStableAmount(amount, symbol);
+  }
+
+  if (!wallet) {
+    return <DashboardConnectScreen busy={busy} onConnect={() => void connect()} />;
   }
 
   return (

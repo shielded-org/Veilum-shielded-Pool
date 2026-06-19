@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { syncShieldedWalletNow } from "../components/ConnectWallet";
+import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
 import { ProofLoader } from "../components/ProofLoader";
 import { AmountField } from "../components/ui/AmountField";
 import { AspStatusPanel } from "../components/ui/AspStatusPanel";

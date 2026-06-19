@@ -37,6 +37,8 @@ type ShieldedState = {
     address: string;
   }) => void;
   clearKeys: () => void;
+  /** Clear all wallet-bound session data (keys, notes, scans, activity). */
+  resetWalletSession: () => void;
   setNotes: (notes: DecryptedNote[]) => void;
   addNote: (note: DecryptedNote) => void;
   markNoteSpent: (id: string) => void;
@@ -97,6 +99,24 @@ export const useShieldedStore = create<ShieldedState>()(
           keyMaterialAddress: null,
           notes: [],
           shieldedBalance: 0n,
+          scanCacheByPool: {},
+        }),
+      resetWalletSession: () =>
+        set({
+          spendingKey: "",
+          viewingKey: "",
+          viewingPub: null,
+          ownerPk: null,
+          keyMaterialAddress: null,
+          routeCursor: 0,
+          notes: [],
+          merkleLeaves: [],
+          shieldedBalance: 0n,
+          scanLoading: false,
+          scanRefreshing: false,
+          syncError: null,
+          syncWarnings: [],
+          transactions: [],
           scanCacheByPool: {},
         }),
       setNotes: (notes) => set({ notes, shieldedBalance: shieldedTotal(notes) }),
