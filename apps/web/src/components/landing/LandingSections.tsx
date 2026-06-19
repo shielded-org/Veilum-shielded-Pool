@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import { FadeInSection } from "../ui/FadeInSection";
+import { RevealItem, ScrollReveal } from "../ui/ScrollReveal";
 import { LandingSteps } from "../ui/LandingSteps";
 import { IconLock, IconUploadCloud } from "../ui/icons";
 import { STABLE_CATALOG, type StableSymbol } from "../../lib/tokens";
@@ -9,128 +9,130 @@ const ASSETS = ["USDC", "EURC", "YLDS", "MGUSD"] as const satisfies readonly Sta
 
 const FAQ = [
   {
-    q: "What is visible on-chain when I shield tokens?",
-    a: "Your Stellar wallet address and the deposit amount. Shielding is intentionally public — it moves funds from your public balance into the encrypted note pool.",
+    q: "What can other people see when I add money?",
+    a: "Your wallet address and how much you deposited. Adding funds is a normal Stellar payment — that part is public by design, so you always know exactly what shows up on the ledger.",
   },
   {
-    q: "What stays private during a transfer?",
-    a: "Sender identity, recipient Stellar address, and transfer amount. The relayer submits the transaction so your wallet is not the on-chain signer.",
+    q: "What stays private when I send to someone?",
+    a: "Who sent it, who received it, and how much moved. The payment is verified without exposing those details to the public blockchain.",
   },
   {
-    q: "Do I need to run a relayer?",
-    a: "Private transfers and withdrawals require a relayer on testnet. Shield deposits are signed directly by your wallet. Run npm run dev:relayer locally or point VITE_RELAYER_URL to a hosted instance.",
+    q: "Do I need to set anything up to send privately?",
+    a: "Just connect your wallet and open the dashboard. Veilum handles the technical work behind the scenes so you can focus on sending.",
   },
   {
-    q: "Where are my keys stored?",
-    a: "Spending and viewing keys are derived locally from a one-time wallet signature. They never leave your browser.",
+    q: "Where are my keys kept?",
+    a: "On your device, in your browser. You approve a one-time message from your wallet to unlock your private balance — nothing is stored on our servers.",
   },
 ] as const;
 
 export function LandingTrustBar() {
   return (
     <div className="landing-trust" aria-label="Built on">
-      <span>Built on Stellar Soroban</span>
+      <span>Built on Stellar</span>
       <span className="landing-trust__dot" aria-hidden />
-      <span>UltraHonk verified</span>
+      <span>Cryptographically verified</span>
       <span className="landing-trust__dot" aria-hidden />
-      <span>Poseidon2 Merkle tree</span>
+      <span>USDC &amp; stablecoins</span>
     </div>
   );
 }
 
 export function LandingPrivacySection() {
   return (
-    <FadeInSection className="landing-section landing-section--alt">
-      <div className="landing-section__head">
-        <h2>Privacy you can read, not guess</h2>
+    <section className="landing-section landing-section--alt">
+      <ScrollReveal as="div" className="landing-section__head">
+        <h2>Privacy you can see, not guess</h2>
         <p className="landing-section__lead">
-          Veilum separates public rails from private payments. Every action tells you exactly what appears on-chain.
+          Every action tells you what is public and what stays between you and the recipient. No fine print.
         </p>
-      </div>
+      </ScrollReveal>
       <div className="landing-compare">
-        <article className="landing-compare__card landing-compare__card--pub">
-          <span className="landing-compare__tag">Public Stellar transfer</span>
+        <RevealItem as="article" className="landing-compare__card landing-compare__card--pub" index={0}>
+          <span className="landing-compare__tag">Regular Stellar payment</span>
           <ul>
-            <li>Sender address visible</li>
-            <li>Recipient address visible</li>
-            <li>Amount visible</li>
-            <li>Full payment graph linkable</li>
+            <li>✗ Sender visible to everyone</li>
+            <li>✗ Recipient visible to everyone</li>
+            <li>✗ Amount visible to everyone</li>
+            <li>✗ Easy to trace payment history</li>
           </ul>
-        </article>
-        <article className="landing-compare__card landing-compare__card--pri">
+        </RevealItem>
+        <RevealItem as="article" className="landing-compare__card landing-compare__card--pri" index={1}>
           <span className="landing-compare__tag">
-            <IconLock size={14} /> Veilum private transfer
+            <IconLock size={14} /> Veilum private payment
           </span>
           <ul>
-            <li>Sender wallet not the tx signer</li>
-            <li>Recipient Stellar address hidden</li>
-            <li>Amount encrypted in note</li>
-            <li>ZK proof verified on-chain</li>
+            <li>✓ Sender not linked to the transaction</li>
+            <li>✓ Recipient address hidden</li>
+            <li>✓ Amount kept confidential</li>
+            <li>✓ Still verified as valid on-chain</li>
           </ul>
-        </article>
+        </RevealItem>
       </div>
-      <p className="landing-compare__note">
-        Deposits and withdrawals remain public by design. Private transfers hide value movement between shielded notes.
-      </p>
-    </FadeInSection>
+      <ScrollReveal as="p" className="landing-compare__note" variant="fade" delay={120}>
+        Adding and withdrawing funds works like any Stellar transfer. Private sends hide what happens in between.
+      </ScrollReveal>
+    </section>
   );
 }
 
 export function LandingFlowSection() {
   const steps = [
-    { label: "Connect wallet", detail: "Freighter, xBull, Albedo, Lobstr" },
-    { label: "Derive shielded keys", detail: "One signature, keys stay local" },
-    { label: "Shield USDC", detail: "Public deposit into the pool" },
-    { label: "Send privately", detail: "Paste recipient shd_ address" },
-    { label: "Withdraw anytime", detail: "Exit to any G… address" },
+    { label: "Connect your wallet", detail: "Freighter, xBull, Albedo, or Lobstr" },
+    { label: "Unlock your private balance", detail: "One quick approval — keys stay on your device" },
+    { label: "Add stablecoins", detail: "Move USDC or other stables into your private balance" },
+    { label: "Pay someone privately", detail: "Share your receive address — they paste it to send" },
+    { label: "Withdraw anytime", detail: "Cash out to any Stellar wallet you choose" },
   ];
 
   return (
-    <FadeInSection className="landing-section">
-      <div className="landing-section__head">
-        <h2>From public balance to private payment</h2>
-        <p className="landing-section__lead">Five steps on testnet. Same flow on mainnet when deployed.</p>
-      </div>
+    <section className="landing-section">
+      <ScrollReveal as="div" className="landing-section__head">
+        <h2>From your wallet to a private payment</h2>
+        <p className="landing-section__lead">Five steps. Same flow on testnet today and mainnet when we launch.</p>
+      </ScrollReveal>
       <ol className="landing-flow">
         {steps.map((step, i) => (
-          <li key={step.label} className="landing-flow__step">
-            <span className="landing-flow__num">{i + 1}</span>
+          <RevealItem key={step.label} as="li" className="landing-flow__step" index={i}>
+            <span className="landing-flow__num" aria-hidden>
+              {String(i + 1).padStart(2, "0")}
+            </span>
             <div>
               <strong>{step.label}</strong>
               <p>{step.detail}</p>
             </div>
-          </li>
+          </RevealItem>
         ))}
       </ol>
-      <div className="landing-section__cta">
+      <ScrollReveal as="div" className="landing-section__cta" variant="fade" delay={80}>
         <Link to="/how-to-use" className="btn btn-secondary">
-          Read the full guide
+          Step-by-step guide
         </Link>
-      </div>
-    </FadeInSection>
+      </ScrollReveal>
+    </section>
   );
 }
 
 export function LandingStepsSection() {
   return (
-    <FadeInSection className="landing-section landing-section--alt">
-      <div className="landing-section__head">
-        <h2>Three actions, clear boundaries</h2>
-        <p className="landing-section__lead">Shield, send, and withdraw — each with explicit visibility rules.</p>
-      </div>
+    <section className="landing-section landing-section--alt">
+      <ScrollReveal as="div" className="landing-section__head">
+        <h2>Three things you can do</h2>
+        <p className="landing-section__lead">Add funds, pay privately, or withdraw — each with clear rules about what others can see.</p>
+      </ScrollReveal>
       <LandingSteps />
-    </FadeInSection>
+    </section>
   );
 }
 
 export function LandingAssetsSection() {
   return (
-    <FadeInSection className="landing-section">
+    <section className="landing-section">
       <div className="landing-split">
-        <div>
-          <h2>Multi-asset shielded pool</h2>
+        <RevealItem index={0}>
+          <h2>Hold the stablecoins you already use</h2>
           <p className="landing-section__lead">
-            One pool custodies multiple Stellar stablecoins. Each note is bound to a specific asset — no cross-token confusion.
+            USDC, EURC, and other Stellar stables — each kept separate so you always know what you hold.
           </p>
           <div className="landing-assets">
             {ASSETS.map((sym) => (
@@ -140,59 +142,59 @@ export function LandingAssetsSection() {
               </span>
             ))}
           </div>
-        </div>
-        <div className="landing-tech card">
-          <h3>Verified on-chain</h3>
+        </RevealItem>
+        <RevealItem as="div" className="landing-tech card" index={1}>
+          <h3>Built to be trustworthy</h3>
           <ul className="landing-tech__list">
             <li>
-              <IconUploadCloud size={16} /> Noir circuits compiled to UltraHonk
+              <IconUploadCloud size={16} /> Every payment checked on-chain before it counts
             </li>
             <li>
-              <IconLock size={16} /> Soroban verifier contract
+              <IconLock size={16} /> Balances encrypted — only you can read them
             </li>
-            <li>Incremental Poseidon2 Merkle tree</li>
-            <li>ECDH encrypted note routing</li>
-            <li>Nullifier set prevents double-spend</li>
+            <li>Each coin tracked separately in one shared pool</li>
+            <li>Spent balances can&apos;t be used twice</li>
+            <li>Works with standard Stellar wallets</li>
           </ul>
-        </div>
+        </RevealItem>
       </div>
-    </FadeInSection>
+    </section>
   );
 }
 
 export function LandingFaqSection() {
   return (
-    <FadeInSection className="landing-section landing-section--alt">
-      <div className="landing-section__head landing-section__head--left">
-        <h2>Common questions</h2>
-      </div>
+    <section className="landing-section landing-section--alt landing-faq-section">
+      <ScrollReveal as="div" className="landing-section__head landing-section__head--left">
+        <h2>Frequently asked questions</h2>
+      </ScrollReveal>
       <div className="landing-faq">
-        {FAQ.map(({ q, a }) => (
-          <details key={q} className="landing-faq__item">
+        {FAQ.map(({ q, a }, i) => (
+          <RevealItem key={q} as="details" className="landing-faq__item" index={i} variant="fade">
             <summary>{q}</summary>
             <p>{a}</p>
-          </details>
+          </RevealItem>
         ))}
       </div>
-    </FadeInSection>
+    </section>
   );
 }
 
 export function LandingCtaSection() {
   return (
-    <FadeInSection className="landing-cta">
+    <ScrollReveal className="landing-cta">
       <div className="landing-cta__inner">
-        <h2>Ready to try private payments?</h2>
-        <p>Connect on Stellar testnet, mint from the faucet, and send your first shielded transfer.</p>
+        <h2>Try your first private payment</h2>
+        <p>Connect on testnet, grab some play money from the faucet, and send a payment only you and the recipient can see.</p>
         <div className="landing-actions">
           <Link to="/dashboard" className="btn btn-primary btn-lg">
             Open Dashboard
           </Link>
           <Link to="/about" className="btn btn-secondary btn-lg">
-            Protocol overview
+            Learn more
           </Link>
         </div>
       </div>
-    </FadeInSection>
+    </ScrollReveal>
   );
 }
