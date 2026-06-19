@@ -86,26 +86,24 @@ export function LandingLayout() {
                 <span>Veilum</span>
               </div>
               <p className="landing-footer__tagline">
-                Private stablecoin payments on Stellar — shield, send, and withdraw with clear privacy
-                boundaries.
+                Private stablecoin payments on Stellar — add funds, pay privately, and withdraw on your terms.
               </p>
             </div>
             <div className="landing-footer__col">
               <h3>Product</h3>
               <Link to="/dashboard">Dashboard</Link>
               <Link to="/how-to-use">How to use</Link>
-              <Link to="/about">About the protocol</Link>
+              <Link to="/about">About Veilum</Link>
             </div>
             <div className="landing-footer__col">
-              <h3>Privacy model</h3>
-              <span>Deposits are public</span>
-              <span>Transfers are private</span>
+              <h3>What&apos;s private</h3>
+              <span>Adding funds is public</span>
+              <span>Payments between users are private</span>
               <span>Withdrawals are public</span>
             </div>
           </div>
           <p className="landing-footer__legal">
-            Testnet software — not financial advice. Shield keys are derived locally and never leave your
-            browser.
+            Testnet preview — not financial advice. Your keys stay on your device and are never sent to us.
           </p>
         </footer>
       </div>
