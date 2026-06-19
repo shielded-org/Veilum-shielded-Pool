@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useState, type CSSProperties } from "react";
 
 import { BalanceOverview } from "../components/ui/BalanceOverview";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -7,15 +8,28 @@ import { TxRow } from "../components/ui/TxRow";
 import { IconDroplet, IconDownloadCloud, IconList, IconLock } from "../components/ui/icons";
 import { useTokenRegistry } from "../hooks/use-token-registry";
 import { useWallet } from "../hooks/use-wallet";
+import { humanizeSyncError, noteStatusLabel } from "../lib/user-messages";
 import { summarizeUnspentBySymbol } from "../lib/token-labels";
+import { formatStableAmount, shortenAddress } from "../lib/utils";
+import { stableDenominationSymbol } from "../lib/tokens";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 const QUICK_ACTIONS = [
   { to: "/dashboard/shield", icon: IconDroplet, label: "Shield", hint: "Deposit into pool" },
   { to: "/dashboard/transfer", icon: IconLock, label: "Transfer", hint: "Send privately" },
   { to: "/dashboard/unshield", icon: IconDownloadCloud, label: "Withdraw", hint: "Unshield to G…" },
-  { to: "/dashboard/notes", icon: IconList, label: "Notes", hint: "View commitments" },
+  { to: "/dashboard/notes", icon: IconList, label: "Notes", hint: "View balances" },
 ] as const;
+
+const PANEL_SCROLL_ROWS = 14;
+
+function sortNewestFirst<T extends { createdAt?: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return tb - ta;
+  });
+}
 
 export function DashboardHome() {
   const { address: wallet } = useWallet();
@@ -29,8 +43,8 @@ export function DashboardHome() {
   const keyMaterialAddress = useShieldedStore((s) => s.keyMaterialAddress);
   const notes = useShieldedStore((s) => s.notes);
   const transactions = useShieldedStore((s) => s.transactions);
-  const network = useShieldedStore((s) => s.network);
   const registry = useTokenRegistry();
+  const [showNoteDetails, setShowNoteDetails] = useState(true);
 
   const unspent = notes.filter((n) => !n.spent);
   const hasKeys = useShieldedStore((s) => !!(s.viewingKey && s.spendingKey && s.viewingPub));
@@ -43,31 +57,29 @@ export function DashboardHome() {
     return arr.findIndex((t) => t.id === tx.id) === i;
   });
 
-  const scanStatusLabel = scanLoading
-    ? "Scanning chain for notes…"
-    : scanRefreshing
-      ? "Refreshing from chain…"
-      : wallet && hasKeys
-        ? `${unspent.length} unspent / ${notes.length} total notes`
-        : wallet
-          ? "Connect to derive keys"
-          : "Not connected";
+  const sortedNotes = sortNewestFirst(notes);
+  const sortedTransactions = sortNewestFirst(uniqueTransactions);
+
+  const noteSummary = balanceAssets
+    .map((a) => `${a.symbol} ${formatSummaryAmount(a.amount, a.symbol, reveal)}`)
+    .join(" · ");
+
+  function formatSummaryAmount(amount: bigint, symbol: string, show: boolean) {
+    if (!show) return `${stableDenominationSymbol(symbol)}••••`;
+    return formatStableAmount(amount, symbol);
+  }
 
   return (
     <>
-      <div className={`system-banner ${relayerOk ? "system-banner--online" : "system-banner--offline"}`}>
-        <div>
-          <strong>{relayerOk ? "Relayer online" : "Relayer offline"}</strong>
-          <div className="system-banner__detail">
-            Private transfers and unshields are submitted via relayer
-          </div>
-        </div>
-        <span className="system-banner__badge">{scanStatusLabel}</span>
-      </div>
+      {!relayerOk && (
+        <p className="alert-banner alert-banner--error">
+          Private sends and withdrawals are unavailable right now. Try again in a few minutes.
+        </p>
+      )}
 
       {wallet && !hasKeys && (
         <p className="alert-banner alert-banner--warn">
-          Shield keys missing — connect your wallet and sign the one-time key derivation message.
+          Sign the one-time key derivation message to enable your shielded wallet.
         </p>
       )}
 
@@ -77,10 +89,14 @@ export function DashboardHome() {
         </p>
       )}
 
-      {syncError && <p className="alert-banner alert-banner--error">{syncError}</p>}
+      {syncError && (
+        <p className="alert-banner alert-banner--error">{humanizeSyncError(syncError)}</p>
+      )}
 
       {!syncError && syncWarnings.length > 0 && (
-        <p className="alert-banner alert-banner--warn">{syncWarnings.join(" · ")}</p>
+        <p className="alert-banner alert-banner--warn">
+          {syncWarnings.map(humanizeSyncError).join(" · ")}
+        </p>
       )}
 
       <div className="dashboard-quick-actions">
@@ -105,12 +121,29 @@ export function DashboardHome() {
         totalNotes={notes.length}
       />
 
+      <div className="dashboard-metrics">
+        <div className="dashboard-metric">
+          <span className="dashboard-metric__label">Available notes</span>
+          <span className="dashboard-metric__value">{ready && !scanLoading ? unspent.length : "—"}</span>
+        </div>
+        <div className="dashboard-metric">
+          <span className="dashboard-metric__label">Total notes</span>
+          <span className="dashboard-metric__value">{ready && !scanLoading ? notes.length : "—"}</span>
+        </div>
+        <div className="dashboard-metric">
+          <span className="dashboard-metric__label">Wallet</span>
+          <span className="dashboard-metric__value mono">
+            {wallet ? shortenAddress(wallet, 4) : "—"}
+          </span>
+        </div>
+      </div>
+
       <div className="panel-grid">
         <div className="card">
-          <h2>Shielded notes</h2>
+          <h2>Notes</h2>
           <p className="card-desc">
-            Decrypted from on-chain route events using your viewing private key.
-            {scanLoading ? " Initial scan…" : scanRefreshing ? " Background refresh…" : ""}
+            Balances discovered from encrypted route events on-chain.
+            {scanLoading ? " Initial scan…" : scanRefreshing ? " Refreshing…" : ""}
           </p>
           {!wallet || !hasKeys ? (
             <EmptyState
@@ -131,52 +164,80 @@ export function DashboardHome() {
             />
           ) : (
             <>
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Token</th>
-                      <th>Amount</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {notes.slice(0, 8).map((n) => (
-                      <tr key={n.id}>
-                        <td>{registry?.symbolForField(n.token) ?? "—"}</td>
-                        <td>
-                          <TokenAmount
-                            amount={n.amount}
-                            tokenField={n.token}
-                            masked={!reveal}
-                            showSymbol={false}
-                          />
-                        </td>
-                        <td>
-                          <span className={`badge ${n.spent ? "err" : "ok"}`}>
-                            {n.spent ? "spent" : "unspent"}
-                          </span>
-                        </td>
+              {!showNoteDetails && noteSummary ? (
+                <p className="notes-summary-line mono">{noteSummary}</p>
+              ) : null}
+              <button
+                type="button"
+                className="notes-advanced-toggle"
+                onClick={() => setShowNoteDetails((v) => !v)}
+              >
+                {showNoteDetails ? "Hide details" : "Show note details"}
+              </button>
+              {showNoteDetails ? (
+                <div
+                  className={`table-wrap${sortedNotes.length > PANEL_SCROLL_ROWS ? " table-wrap--scroll" : ""}`}
+                  style={
+                    sortedNotes.length > PANEL_SCROLL_ROWS
+                      ? ({ ["--scroll-rows" as string]: PANEL_SCROLL_ROWS } as CSSProperties)
+                      : undefined
+                  }
+                >
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Token</th>
+                        <th>Amount</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {notes.length > 8 && (
+                    </thead>
+                    <tbody>
+                      {sortedNotes.map((n) => (
+                        <tr key={n.id}>
+                          <td>{registry?.symbolForField(n.token) ?? "—"}</td>
+                          <td>
+                            <TokenAmount
+                              amount={n.amount}
+                              tokenField={n.token}
+                              masked={!reveal}
+                              showSymbol={false}
+                              asUsd
+                            />
+                          </td>
+                          <td>
+                            <span className={`badge ${n.spent ? "err" : "ok"}`}>
+                              {noteStatusLabel(n.spent)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {sortedNotes.length > PANEL_SCROLL_ROWS && showNoteDetails ? (
                 <p className="card-footnote">
-                  Showing 8 of {notes.length} — see <Link to="/dashboard/notes">Notes</Link> for the full list.
+                  {sortedNotes.length} notes — scroll to see all, or open{" "}
+                  <Link to="/dashboard/notes">Notes</Link> for the full page.
                 </p>
-              )}
+              ) : null}
             </>
           )}
         </div>
 
         <div className="card">
           <h2>Recent activity</h2>
-          {uniqueTransactions.length === 0 ? (
+          {sortedTransactions.length === 0 ? (
             <EmptyState title="No transactions yet" body="Shield, transfer, or withdraw to see activity here." />
           ) : (
-            <div className="table-wrap">
+            <div
+              className={`table-wrap${sortedTransactions.length > PANEL_SCROLL_ROWS ? " table-wrap--scroll" : ""}`}
+              style={
+                sortedTransactions.length > PANEL_SCROLL_ROWS
+                  ? ({ ["--scroll-rows" as string]: PANEL_SCROLL_ROWS } as CSSProperties)
+                  : undefined
+              }
+            >
               <table className="table table--activity">
                 <thead>
                   <tr>
@@ -188,7 +249,7 @@ export function DashboardHome() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uniqueTransactions.map((tx) => (
+                  {sortedTransactions.map((tx) => (
                     <TxRow key={tx.id} tx={tx} />
                   ))}
                 </tbody>
