@@ -8,6 +8,8 @@ use soroban_sdk::IntoVal;
 const PUBLIC_INPUT_COUNT: u32 = 12;
 const PROOF_BYTES: u32 = 456 * 32;
 const TRANSFER_META_BYTES: u32 = 32 * 8;
+const ASP_TREE_DEPTH: u32 = 10;
+const ASP_META_BYTES: u32 = 32 + 32 + 4 + ASP_TREE_DEPTH * 32 + 32;
 
 #[contracttype]
 #[derive(Clone)]
@@ -15,6 +17,11 @@ pub enum DataKey {
     Owner,
     Verifier,
     MerkleTree,
+    AspMembership,
+    AspDeny,
+    VerifierAsp,
+    AspEnforceShield,
+    AspGate,
     EnabledToken(Address),
     TokenFieldFor(Address),
     TokenByField(BytesN<32>),
@@ -39,6 +46,8 @@ pub enum Error {
     NotOwner = 12,
     TokenNotEnabled = 13,
     TokenTransferFailed = 14,
+    AspMembershipInvalid = 15,
+    NotAspGate = 16,
 }
 
 #[contracttype]
@@ -260,6 +269,17 @@ impl ShieldedPool {
             .unwrap_or(false)
     }
 
+    pub fn configure_asp(env: Env, asp_membership: Address, asp_deny: Address, verifier_asp: Address, asp_gate: Address, enforce_shield: bool) -> Result<(), Error> {
+        let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
+        owner.require_auth();
+        env.storage().instance().set(&DataKey::AspMembership, &asp_membership);
+        env.storage().instance().set(&DataKey::AspDeny, &asp_deny);
+        env.storage().instance().set(&DataKey::VerifierAsp, &verifier_asp);
+        env.storage().instance().set(&DataKey::AspGate, &asp_gate);
+        env.storage().instance().set(&DataKey::AspEnforceShield, &enforce_shield);
+        Ok(())
+    }
+
     pub fn shield_routed(
         env: Env,
         caller: Address,
@@ -269,7 +289,59 @@ impl ShieldedPool {
         encrypted_note: Bytes,
         channel: BytesN<32>,
         subchannel: BytesN<32>,
+        asp_meta: Bytes,
     ) -> Result<(), Error> {
+        let enforce: bool = env.storage().instance().get(&DataKey::AspEnforceShield).unwrap_or(false);
+        if enforce {
+            if asp_meta.len() != ASP_META_BYTES {
+                return Err(Error::AspMembershipInvalid);
+            }
+            let asp: Address = env.storage().instance().get(&DataKey::AspMembership).ok_or(Error::AspMembershipInvalid)?;
+            let owner_pk = read_bytes32(&env, &asp_meta, 0);
+            let blinding = read_bytes32(&env, &asp_meta, 32);
+            let mut idx_bytes = [0u8; 4];
+            for i in 0..4u32 {
+                idx_bytes[i as usize] = asp_meta.get(64 + i).unwrap_or(0);
+            }
+            let leaf_index = u32::from_be_bytes(idx_bytes);
+            let root = read_bytes32(&env, &asp_meta, 68 + ASP_TREE_DEPTH * 32);
+            let mut siblings: SorobanVec<BytesN<32>> = SorobanVec::new(&env);
+            for level in 0..ASP_TREE_DEPTH {
+                let mut arr = [0u8; 32];
+                for i in 0..32u32 {
+                    arr[i as usize] = asp_meta.get(68 + level * 32 + i).unwrap_or(0);
+                }
+                siblings.push_back(BytesN::from_array(&env, &arr));
+            }
+            let mut vargs: SorobanVec<Val> = SorobanVec::new(&env);
+            vargs.push_back(owner_pk.clone().into_val(&env));
+            vargs.push_back(blinding.into_val(&env));
+            vargs.push_back(leaf_index.into_val(&env));
+            vargs.push_back(siblings.into_val(&env));
+            vargs.push_back(root.clone().into_val(&env));
+            let ok = env
+                .try_invoke_contract::<bool, InvokeError>(&asp, &Symbol::new(&env, "verify_path"), vargs)
+                .ok()
+                .and_then(|r| r.ok())
+                .unwrap_or(false);
+            if !ok {
+                return Err(Error::AspMembershipInvalid);
+            }
+            if let Some(deny) = env.storage().instance().get::<DataKey, Address>(&DataKey::AspDeny) {
+                let mut dargs: SorobanVec<Val> = SorobanVec::new(&env);
+                dargs.push_back(owner_pk.into_val(&env));
+                if env
+                    .try_invoke_contract::<bool, InvokeError>(&deny, &Symbol::new(&env, "is_denied"), dargs)
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .unwrap_or(false)
+                {
+                    return Err(Error::AspMembershipInvalid);
+                }
+            }
+        } else if asp_meta.len() != 0 {
+            return Err(Error::AspMembershipInvalid);
+        }
         caller.require_auth();
         if !is_token_enabled(&env, &token) {
             return Err(Error::TokenNotEnabled);
@@ -411,6 +483,47 @@ impl ShieldedPool {
             publish_routed_note(&env, &channel, &subchannel, &encrypted_note);
         }
 
+        let pool = env.current_contract_address();
+        token_transfer(&env, &token, &pool, &recipient, amount as i128)?;
+        Ok(())
+    }
+
+    pub fn fulfill_unshield(
+        env: Env,
+        gate: Address,
+        nullifier: BytesN<32>,
+        token: Address,
+        recipient: Address,
+        amount: u128,
+        merkle_root: BytesN<32>,
+        new_commitment: BytesN<32>,
+        encrypted_note: Bytes,
+        channel: BytesN<32>,
+        subchannel: BytesN<32>,
+    ) -> Result<(), Error> {
+        let expected: Address = env.storage().instance().get(&DataKey::AspGate).ok_or(Error::NotAspGate)?;
+        if gate != expected {
+            return Err(Error::NotAspGate);
+        }
+        gate.require_auth();
+        if !is_token_enabled(&env, &token) {
+            return Err(Error::TokenNotEnabled);
+        }
+        if amount == 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if nullifier == zero_bytes32(&env) {
+            return Err(Error::InvalidNullifier);
+        }
+        let tree: Address = env.storage().instance().get(&DataKey::MerkleTree).unwrap();
+        if !merkle_is_known_root(&env, &tree, &merkle_root) {
+            return Err(Error::InvalidRoot);
+        }
+        check_and_mark_nullifier(&env, &nullifier)?;
+        if new_commitment != zero_bytes32(&env) {
+            merkle_insert(&env, &tree, &new_commitment);
+            publish_routed_note(&env, &channel, &subchannel, &encrypted_note);
+        }
         let pool = env.current_contract_address();
         token_transfer(&env, &token, &pool, &recipient, amount as i128)?;
         Ok(())
