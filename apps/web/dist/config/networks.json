@@ -17,6 +17,10 @@
   "testnet": {
     "networkPassphrase": "Test SDF Network ; September 2015",
     "rpcUrl": "https://soroban-testnet.stellar.org:443",
+    "eventsRpcUrls": [
+      "https://soroban-rpc.testnet.stellar.gateway.fm",
+      "https://rpc.ankr.com/stellar_testnet_soroban"
+    ],
     "horizonUrl": "https://horizon-testnet.stellar.org",
     "friendbotUrl": "https://friendbot.stellar.org",
     "sourceAccount": "bevis"
@@ -24,6 +28,11 @@
   "mainnet": {
     "networkPassphrase": "Public Global Stellar Network ; September 2015",
     "rpcUrl": "https://soroban-mainnet.stellar.org:443",
+    "eventsRpcUrls": [
+      "https://soroban-rpc.mainnet.stellar.gateway.fm",
+      "https://rpc.ankr.com/stellar_soroban",
+      "https://archive-rpc.lightsail.network/"
+    ],
     "horizonUrl": "https://horizon.stellar.org",
     "sourceAccount": "deployer"
   }
