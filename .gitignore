@@ -1,6 +1,7 @@
 .env
 services/relayer/.env
 node_modules/
+.toolchain/
 target/
 **/target/
 scripts/deployment.json

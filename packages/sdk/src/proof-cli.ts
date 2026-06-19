@@ -38,7 +38,13 @@ unshield_token_address = "${payload.unshield_token_address}"
 }
 
 function toolEnv(): NodeJS.ProcessEnv {
-  const extra = [join(homedir(), ".nargo/bin"), join(homedir(), ".bb/bin")].join(":");
+  const extra = [
+    process.env.NOIR_TOOLCHAIN_BIN,
+    join(homedir(), ".nargo/bin"),
+    join(homedir(), ".bb/bin"),
+  ]
+    .filter(Boolean)
+    .join(":");
   return { ...process.env, PATH: `${extra}:${process.env.PATH ?? ""}` };
 }
 

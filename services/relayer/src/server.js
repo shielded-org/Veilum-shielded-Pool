@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -8,19 +8,83 @@ import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { generateUltraHonkProofCli } from "@stellar-shielded/sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 
 import { createSorobanSubmitter } from "./soroban-submit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RELAYER_ROOT = path.resolve(__dirname, "..");
 const CIRCUITS_DIR = path.resolve(RELAYER_ROOT, "../../packages/circuits");
+const CIRCUIT_ARTIFACTS_DIR = path.join(RELAYER_ROOT, "artifacts");
+const TOOLCHAIN_BIN = path.resolve(RELAYER_ROOT, "../../.toolchain/bin");
 const PROOF_BYTES_HEX = 456 * 32 * 2;
 
-if (!existsSync(path.join(CIRCUITS_DIR, "target/shielded_transfer.json"))) {
-  console.warn(
-    `Warning: circuit bytecode missing at ${CIRCUITS_DIR}/target/shielded_transfer.json — run npm run build:circuits`
-  );
+function prependNoirToolchainPath() {
+  const prefixes = [
+    process.env.NOIR_TOOLCHAIN_BIN,
+    existsSync(TOOLCHAIN_BIN) ? TOOLCHAIN_BIN : null,
+    path.join(os.homedir(), ".nargo/bin"),
+    path.join(os.homedir(), ".bb/bin"),
+  ].filter(Boolean);
+
+  const unique = prefixes.filter((entry, index) => entry && prefixes.indexOf(entry) === index);
+
+  if (unique.length === 0) return;
+  process.env.NOIR_TOOLCHAIN_BIN = unique[0];
+  process.env.PATH = `${unique.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ""}`;
 }
+
+prependNoirToolchainPath();
+
+function hasStellarCli() {
+  try {
+    execFileSync("stellar", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasProvingToolchain() {
+  try {
+    execFileSync("nargo", ["--version"], { stdio: "ignore", env: process.env });
+    execFileSync("bb", ["--version"], { stdio: "ignore", env: process.env });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureCircuitArtifacts() {
+  const targetDir = path.join(CIRCUITS_DIR, "target");
+  const bytecodeDest = path.join(targetDir, "shielded_transfer.json");
+  if (existsSync(bytecodeDest)) return true;
+
+  const bytecodeSources = [
+    path.join(CIRCUIT_ARTIFACTS_DIR, "shielded_transfer.json"),
+    path.resolve(RELAYER_ROOT, "../../apps/web/public/circuits/shielded_transfer.json"),
+  ];
+
+  for (const src of bytecodeSources) {
+    if (!existsSync(src)) continue;
+    mkdirSync(targetDir, { recursive: true });
+    copyFileSync(src, bytecodeDest);
+    const vkSrc = path.join(path.dirname(src), "vk");
+    const vkDest = path.join(targetDir, "vk");
+    if (existsSync(vkSrc) && !existsSync(vkDest)) {
+      copyFileSync(vkSrc, vkDest);
+    }
+    console.log(`Bootstrapped relayer circuits from ${src}`);
+    return true;
+  }
+
+  console.warn(
+    `Warning: circuit bytecode missing at ${bytecodeDest} — commit services/relayer/artifacts or run npm run build:circuits`
+  );
+  return false;
+}
+
+ensureCircuitArtifacts();
 const ENV_PATH = path.join(RELAYER_ROOT, ".env");
 if (existsSync(ENV_PATH)) {
   loadEnvFile(ENV_PATH);
@@ -76,6 +140,7 @@ function run(cmd, args, opts = {}) {
 }
 
 function ensureStellarNetwork() {
+  if (!hasStellarCli()) return;
   try {
     run("stellar", ["network", "remove", NETWORK]);
   } catch {
@@ -99,11 +164,16 @@ function ensureStellarNetwork() {
 
 function ensureRelayerIdentity() {
   if (!RELAYER_SECRET) return;
-  const identityDir = path.join(stellarConfigDir(), "identity");
-  mkdirSync(identityDir, { recursive: true });
-  writeFileSync(path.join(identityDir, `${RELAYER_ACCOUNT}.toml`), `secret_key = "${RELAYER_SECRET}"\n`);
+  if (hasStellarCli()) {
+    const identityDir = path.join(stellarConfigDir(), "identity");
+    mkdirSync(identityDir, { recursive: true });
+    writeFileSync(
+      path.join(identityDir, `${RELAYER_ACCOUNT}.toml`),
+      `secret_key = "${RELAYER_SECRET}"\n`
+    );
+  }
   if (RELAYER_PUBLIC_KEY) {
-    const addr = runCapture("stellar", ["keys", "address", RELAYER_ACCOUNT]);
+    const addr = Keypair.fromSecret(RELAYER_SECRET).publicKey();
     if (addr !== RELAYER_PUBLIC_KEY) {
       throw new Error(`RELAYER_PUBLIC_KEY mismatch: expected ${RELAYER_PUBLIC_KEY}, got ${addr}`);
     }
@@ -111,6 +181,9 @@ function ensureRelayerIdentity() {
 }
 
 function runStellarCapture(args) {
+  if (!hasStellarCli()) {
+    throw new Error("Stellar CLI not available — set RELAYER_SECRET_KEY for SDK submission");
+  }
   const rpcUrls = [RPC_URL, ...RPC_FALLBACK_URLS];
   let lastError = null;
   for (const rpcUrl of rpcUrls) {
@@ -249,6 +322,11 @@ function validateProofInputs(pi) {
 /** CLI proving (nargo + bb) matches on-chain verifier; browser bb.js proofs may not. */
 async function resolveTransferProofBytes(body) {
   if (body.proofInputs) {
+    if (!hasProvingToolchain()) {
+      throw new Error(
+        "Relayer proving toolchain unavailable (install nargo + bb on the server, or send proofBytes)"
+      );
+    }
     const err = validateProofInputs(body.proofInputs);
     if (err) throw new Error(err);
     const { proofBytes } = await generateUltraHonkProofCli(CIRCUITS_DIR, body.proofInputs);
@@ -608,19 +686,17 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "GET" && req.url === "/healthz") {
-    let relayerAddress = null;
-    try {
-      relayerAddress = runCapture("stellar", ["keys", "address", RELAYER_ACCOUNT]);
-    } catch {
-      /* ignore */
-    }
+    const circuitsReady = existsSync(path.join(CIRCUITS_DIR, "target/shielded_transfer.json"));
+    const provingReady = hasProvingToolchain();
     return json(res, 200, {
-      ok: true,
+      ok: Boolean(sorobanSubmitter),
       mode: sorobanSubmitter ? "sdk" : RELAYER_SECRET ? "sdk-missing" : "cli-identity",
-      proveMode: "cli",
+      proveMode: provingReady ? "cli" : "unavailable",
+      circuitsReady,
+      provingReady,
       network: NETWORK,
       relayerAccount: RELAYER_ACCOUNT,
-      relayerAddress: sorobanSubmitter?.publicKey ?? relayerAddress,
+      relayerAddress: sorobanSubmitter?.publicKey ?? null,
       queueSize: requests.size,
       aspEnforce: ASP_ENFORCE,
       aspServiceUrl: ASP_SERVICE_URL,
