@@ -13,7 +13,7 @@ export function NoteSelector({ notes, value, onChange, emptyMessage }: NoteSelec
   const registry = useTokenRegistry();
 
   if (notes.length === 0) {
-    return <p className="empty-inline">{emptyMessage ?? "No unspent notes available."}</p>;
+    return <p className="empty-inline">{emptyMessage ?? "No available notes."}</p>;
   }
 
   const selected = value || notes[0]?.id || "";
