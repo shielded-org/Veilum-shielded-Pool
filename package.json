@@ -9,13 +9,15 @@
   ],
   "scripts": {
     "build:circuits": "bash scripts/build-circuits.sh",
-    "build:contracts": "cd packages/contracts/merkle-tree && stellar contract build && cd ../mock-token && stellar contract build && cd ../shielded-pool && stellar contract build && cd ../rs-soroban-ultrahonk && stellar contract build",
+    "build:circuits:asp": "bash scripts/build-circuits-asp.sh",
+    "build:contracts": "cd packages/contracts/merkle-tree && stellar contract build && cd ../mock-token && stellar contract build && cd ../asp-membership && stellar contract build && cd ../asp-deny && stellar contract build && cd ../asp-gate && stellar contract build && cd ../shielded-pool && stellar contract build && cd ../rs-soroban-ultrahonk && stellar contract build",
     "generate:bindings": "node scripts/generate-contract-bindings.mjs",
     "deploy:stables": "node scripts/deploy-stables.mjs",
     "build:sdk": "npm run build --workspace @stellar-shielded/sdk",
     "dev:web": "npm run dev --workspace @stellar-shielded/web",
     "dev:relayer": "npm run dev --workspace @stellar-shielded/relayer",
     "e2e:devnet": "node scripts/devnet-e2e.mjs",
+    "e2e:asp": "node scripts/asp-e2e.mjs",
     "e2e:local": "STELLAR_NETWORK=local node scripts/devnet-e2e.mjs",
     "e2e:testnet": "node scripts/devnet-e2e.mjs",
     "check": "npm run build:sdk"

@@ -4,6 +4,9 @@ members = [
   "packages/contracts/merkle-tree",
   "packages/contracts/mock-token",
   "packages/contracts/shielded-pool",
+  "packages/contracts/asp-membership",
+  "packages/contracts/asp-deny",
+  "packages/contracts/asp-gate",
 ]
 exclude = [
   "packages/contracts/rs-soroban-ultrahonk",
