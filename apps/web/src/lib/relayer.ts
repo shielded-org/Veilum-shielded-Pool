@@ -1,4 +1,5 @@
 import { RELAYER_URL } from "./types";
+import type { ProofInputs } from "./proving";
 
 export type RelayerResponse = {
   accepted?: boolean;
@@ -10,7 +11,10 @@ export type RelayerResponse = {
 
 export async function submitShieldedTransferToRelayer(payload: {
   shieldedPool: string;
-  proofBytes: string;
+  /** Witness inputs — relayer proves with nargo+bb (matches on-chain verifier). */
+  proofInputs?: ProofInputs;
+  /** Legacy: pre-generated proof from browser (may fail on-chain). */
+  proofBytes?: string;
   transferMeta: string;
   encryptedNote0: string;
   encryptedNote1: string;
@@ -42,6 +46,10 @@ export async function submitUnshieldToRelayer(payload: {
   encryptedNote?: string;
   channel?: string;
   subchannel?: string;
+  useAsp?: boolean;
+  ownerPk?: string;
+  aspGate?: string;
+  publicInputs?: string;
 }): Promise<RelayerResponse> {
   const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/relay/unshield`, {
     method: "POST",
@@ -68,7 +76,13 @@ export async function waitForRelayerConfirmation(
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const status = await fetchRelayerStatus(requestId);
-    if (status.status === "confirmed") return status;
+    if (status.status === "confirmed") {
+      const hash = status.txHash?.replace(/^0x/i, "") ?? "";
+      if (!/^[0-9a-f]{64}$/i.test(hash)) {
+        throw new Error("Relayer confirmed without a valid on-chain transaction hash");
+      }
+      return { ...status, txHash: hash.toLowerCase() };
+    }
     if (status.status === "failed" || status.status === "timeout") {
       throw new Error(status.error || `Relayer ${status.status}`);
     }

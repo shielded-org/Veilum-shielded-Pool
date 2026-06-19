@@ -1,7 +1,19 @@
+import { rpc } from "@stellar/stellar-sdk";
+
+const { Api: SorobanApi } = rpc;
+
 import { tokenFieldFromContractId } from "./config";
+import {
+  deriveMembershipBlinding,
+  ensureAspMembership,
+  fetchAspMembershipPath,
+  packAspMeta,
+} from "./asp";
 import { resolveContractForTokenField } from "./tokens";
 import {
   buildSpendPath,
+  computeBatchMerkleRoot,
+  computeIncrementalMerkleRoot,
   getBrowserPoseidonHasher,
   deriveOwnerPk,
   noteCommitment,
@@ -12,8 +24,10 @@ import {
   routeForRecipient,
 } from "./keys";
 import { findLeafIndex, syncMerkleLeavesValidated } from "./merkle-sync";
+import { merkleDebug, merkleDebugWarn } from "./merkle-debug";
 import { resolvePoolStartLedger } from "./pool-ledger";
-import { generateUltraHonkProof, packTransferMeta } from "./proving";
+import { generateUltraHonkProof, packTransferMeta, type ProofInputs } from "./proving";
+import { generateAspUltraHonkProof } from "./proving-asp";
 import {
   submitShieldedTransferToRelayer,
   submitUnshieldToRelayer,
@@ -24,6 +38,8 @@ import {
   createRpc,
   getMerkleNextIndex,
   getTokenField,
+  merkleHash2,
+  nullifierSpent,
   shieldRouted,
 } from "./soroban";
 import { useShieldedStore } from "../store/use-shielded-store";
@@ -42,10 +58,25 @@ async function resolveMerkleSpendPath(params: {
 }) {
   const status = (msg: string) => merkleStatus(params.onStatus, msg);
   status("Initializing crypto…");
-  const rpc = createRpc(params.config);
   const { merkleTree, shieldedPool } = params.config.contracts;
   const hasher = await getBrowserPoseidonHasher();
-  const scanStart = await resolvePoolStartLedger(rpc, shieldedPool, params.config.contracts.deployLedger);
+  const { startLedger: scanStart, window, eventsRpc } = await resolvePoolStartLedger(
+    params.config,
+    shieldedPool,
+    params.config.contracts.deployLedger
+  );
+
+  const zero = `0x${"00".repeat(32)}` as Hex32;
+  const [onChainH00, localH00] = await Promise.all([
+    merkleHash2(eventsRpc, params.config, params.wallet, merkleTree, zero, zero),
+    hasher.hash2(0n, 0n),
+  ]);
+  if (onChainH00.toLowerCase() !== localH00.toLowerCase()) {
+    merkleDebugWarn("poseidonMismatch", { onChainH00, localH00 });
+    throw new Error(
+      "Local Poseidon hash2 does not match on-chain merkle contract — hard refresh the page (Ctrl+Shift+R)"
+    );
+  }
 
   function resolveLeafIndex(leaves: Hex32[]): number {
     let leafIndex = findLeafIndex(leaves, params.note.commitment);
@@ -68,8 +99,9 @@ async function resolveMerkleSpendPath(params: {
 
   status("Reading on-chain merkle root…");
   status("Syncing merkle tree from chain…");
+  const rpc = createRpc(params.config);
   const synced = await syncMerkleLeavesValidated(
-    rpc,
+    eventsRpc,
     params.config,
     params.wallet,
     shieldedPool,
@@ -81,7 +113,11 @@ async function resolveMerkleSpendPath(params: {
       } else if (p.phase === "txs") {
         status(`Syncing merkle tree… (${p.txs ?? 0}/${p.totalTxs ?? "?"} txs)`);
       }
-    }
+    },
+    {
+      hasher,
+    },
+    window
   );
 
   const leafIndex = resolveLeafIndex(synced.leaves);
@@ -91,9 +127,37 @@ async function resolveMerkleSpendPath(params: {
 
   status("Building merkle path…");
   const path = await buildSpendPath(hasher, synced.leaves, leafIndex);
-  if (path.root.toLowerCase() !== synced.root.toLowerCase()) {
+  const [incrementalRoot, batchRoot] = await Promise.all([
+    computeIncrementalMerkleRoot(hasher, synced.leaves),
+    computeBatchMerkleRoot(hasher, synced.leaves),
+  ]);
+  const onChain = synced.root.toLowerCase();
+  const pathRoot = path.root.toLowerCase();
+  const incrementalOk = incrementalRoot.toLowerCase() === onChain;
+  const batchOk = batchRoot.toLowerCase() === onChain;
+  const pathRootOk = pathRoot === onChain;
+
+  merkleDebug("transfer:merklePath", {
+    leafIndex,
+    leafCount: synced.leaves.length,
+    onChainRoot: synced.root,
+    pathRoot: path.root,
+    incrementalRoot,
+    batchRoot,
+    pathRootOk,
+    incrementalOk,
+    batchOk,
+  });
+
+  if (!pathRootOk) {
+    merkleDebugWarn("transfer:rootMismatch", {
+      onChainRoot: synced.root,
+      pathRoot: path.root,
+      incrementalRoot,
+      batchRoot,
+    });
     throw new Error(
-      "Merkle root mismatch with on-chain contract — local hash differs from get_last_root()"
+      "Merkle spend path does not match the current on-chain root — wait for sync to finish and retry"
     );
   }
 
@@ -104,7 +168,7 @@ async function resolveMerkleSpendPath(params: {
     leaves: synced.leaves,
     leafIndex,
     path,
-    onChainRoot: synced.root,
+    onChainRoot: path.root,
   };
 }
 
@@ -140,6 +204,21 @@ export async function executeShieldDeposit(params: {
   status("Approving token spend…");
   await approveToken(rpc, params.config, params.wallet, tokenId, shieldedPool, params.amount);
 
+  let aspMetaHex = "";
+  if (params.config.contracts.aspEnforceShield) {
+    status("Scanning on-chain fund sources…");
+    await ensureAspMembership(params.keys.ownerPk, params.wallet, tokenId);
+    status("ASP membership approved — building shield path…");
+    const path = await fetchAspMembershipPath(params.keys.ownerPk);
+    aspMetaHex = packAspMeta({
+      ownerPk: params.keys.ownerPk,
+      membershipBlinding: path.membershipBlinding ?? deriveMembershipBlinding(params.keys.ownerPk),
+      leafIndex: path.leafIndex,
+      siblings: path.siblings,
+      aspRoot: path.aspRoot,
+    });
+  }
+
   const leafIndex = await getMerkleNextIndex(rpc, params.config, params.wallet, merkleTree);
   status("Submitting shield deposit…");
   const txHash = await shieldRouted(
@@ -152,8 +231,13 @@ export async function executeShieldDeposit(params: {
     commitment,
     encrypted.replace(/^0x/, ""),
     route.channel,
-    route.subchannel
+    route.subchannel,
+    aspMetaHex
   );
+
+  void fetchMerkleLeaves(params.config, params.wallet).then((leaves) => {
+    useShieldedStore.getState().setMerkleLeaves(leaves);
+  });
 
   return {
     txHash,
@@ -241,8 +325,8 @@ export async function executePrivateTransfer(params: {
     params.keys.viewingPub
   );
 
-  status("Generating transfer proof…");
-  const proof = await generateUltraHonkProof({
+  status("Submitting to relayer…");
+  const proofInputs: ProofInputs = {
     spending_key: params.keys.spendingKey.toString(),
     in_amounts: [params.note.amount.toString(), "0"],
     in_blindings: [toHex32(params.note.blinding), toHex32(0n)],
@@ -261,8 +345,9 @@ export async function executePrivateTransfer(params: {
     unshield_recipient: toHex32(0n),
     unshield_amount: "0",
     unshield_token_address: toHex32(0n),
-  });
+  };
 
+  const feeRecipientPk = toHex32(0n);
   const transferMeta = packTransferMeta({
     nullifier0: nf0,
     nullifier1: toHex32(0n),
@@ -270,13 +355,12 @@ export async function executePrivateTransfer(params: {
     outCommitment1,
     merkleRoot: onChainRoot,
     token: params.note.token,
-    fee: 0n,
+    feeRecipientPk,
   });
 
-  status("Submitting to relayer…");
   const relayed = await submitShieldedTransferToRelayer({
     shieldedPool,
-    proofBytes: Buffer.from(proof).toString("hex"),
+    proofInputs,
     transferMeta,
     encryptedNote0: encryptedNote0.replace(/^0x/, ""),
     encryptedNote1: encryptedNote1.replace(/^0x/, ""),
@@ -288,11 +372,31 @@ export async function executePrivateTransfer(params: {
   });
   status("Waiting for confirmation…");
   const confirmed = await waitForRelayerConfirmation(relayed.requestId);
-  const txHash = confirmed.txHash ?? relayed.txHash ?? undefined;
+  const txHash = (confirmed.txHash ?? relayed.txHash)?.replace(/^0x/i, "").toLowerCase();
+  if (!txHash || !/^[0-9a-f]{64}$/.test(txHash)) {
+    throw new Error("Transfer submitted but no valid on-chain transaction hash was returned");
+  }
+
+  const rpcClient = createRpc(params.config);
+  const txStatus = await rpcClient.getTransaction(txHash);
+  if (txStatus.status !== SorobanApi.GetTransactionStatus.SUCCESS) {
+    throw new Error(`Transfer transaction did not succeed on-chain (status=${txStatus.status})`);
+  }
+  const spentOnChain = await nullifierSpent(
+    rpcClient,
+    params.config,
+    params.wallet,
+    shieldedPool,
+    bytes32Arg(nf0)
+  );
+  if (!spentOnChain) {
+    throw new Error("Transfer was not applied on-chain — the source note nullifier is still unspent");
+  }
+
   const changeNote =
     changeAmount > 0n
       ? {
-          id: `${outCommitment1}:${txHash ?? relayed.requestId}`,
+          id: `${outCommitment1}:${txHash}`,
           commitment: outCommitment1,
           token: params.note.token,
           amount: changeAmount,
@@ -367,32 +471,70 @@ export async function executeUnshield(params: {
         )
       : "00";
 
-  status("Generating unshield proof…");
-  const proof = await generateUltraHonkProof({
-    spending_key: params.keys.spendingKey.toString(),
-    in_amounts: [params.note.amount.toString(), "0"],
-    in_blindings: [toHex32(params.note.blinding), toHex32(0n)],
-    merkle_siblings: [path.siblings, Array(20).fill(toHex32(0n))],
-    merkle_directions: [path.directions, Array(20).fill(false)],
-    out_amounts: [changeAmount.toString(), "0"],
-    out_recipient_pks: [params.keys.ownerPk, toHex32(0n)],
-    out_blindings: [toHex32(changeBlinding), toHex32(0n)],
-    token: params.note.token,
-    merkle_root: onChainRoot,
-    nullifiers: [nf, toHex32(0n)],
-    out_commitments: [changeCommitment, toHex32(0n)],
-    fee: "0",
-    fee_recipient_pk: toHex32(0n),
-    mode: "1",
-    unshield_recipient: recipientField,
-    unshield_amount: params.amount.toString(),
-    unshield_token_address: params.note.token,
-  });
+  const useAsp = Boolean(params.config.contracts.verifierAsp && params.config.contracts.aspGate);
+
+  status(useAsp ? "Generating ASP unshield proof…" : "Generating unshield proof…");
+  let proofHex: string;
+  let publicInputsHex: string | undefined;
+  if (useAsp) {
+    status("Verifying ASP membership (on-chain scan)…");
+    await ensureAspMembership(params.keys.ownerPk, params.wallet, tokenContract);
+    const aspPath = await fetchAspMembershipPath(params.keys.ownerPk);
+    const aspProof = await generateAspUltraHonkProof({
+      spending_key: params.keys.spendingKey.toString(),
+      in_amounts: [params.note.amount.toString(), "0"],
+      in_blindings: [toHex32(params.note.blinding), toHex32(0n)],
+      merkle_siblings: [path.siblings, Array(20).fill(toHex32(0n))],
+      merkle_directions: [path.directions, Array(20).fill(false)],
+      out_amounts: [changeAmount.toString(), "0"],
+      out_recipient_pks: [params.keys.ownerPk, toHex32(0n)],
+      out_blindings: [toHex32(changeBlinding), toHex32(0n)],
+      membership_blinding: aspPath.membershipBlinding ?? deriveMembershipBlinding(params.keys.ownerPk),
+      asp_merkle_siblings: aspPath.siblings,
+      asp_merkle_directions: aspPath.directions,
+      token: params.note.token,
+      merkle_root: onChainRoot,
+      nullifiers: [nf, toHex32(0n)],
+      out_commitments: [changeCommitment, toHex32(0n)],
+      fee: "0",
+      fee_recipient_pk: toHex32(0n),
+      mode: "1",
+      unshield_recipient: recipientField,
+      unshield_amount: params.amount.toString(),
+      unshield_token_address: params.note.token,
+      asp_membership_root: aspPath.aspRoot,
+      owner_pk_public: params.keys.ownerPk,
+    });
+    proofHex = Buffer.from(aspProof.proof).toString("hex");
+    publicInputsHex = Buffer.from(aspProof.publicInputs).toString("hex");
+  } else {
+    const proof = await generateUltraHonkProof({
+      spending_key: params.keys.spendingKey.toString(),
+      in_amounts: [params.note.amount.toString(), "0"],
+      in_blindings: [toHex32(params.note.blinding), toHex32(0n)],
+      merkle_siblings: [path.siblings, Array(20).fill(toHex32(0n))],
+      merkle_directions: [path.directions, Array(20).fill(false)],
+      out_amounts: [changeAmount.toString(), "0"],
+      out_recipient_pks: [params.keys.ownerPk, toHex32(0n)],
+      out_blindings: [toHex32(changeBlinding), toHex32(0n)],
+      token: params.note.token,
+      merkle_root: onChainRoot,
+      nullifiers: [nf, toHex32(0n)],
+      out_commitments: [changeCommitment, toHex32(0n)],
+      fee: "0",
+      fee_recipient_pk: toHex32(0n),
+      mode: "1",
+      unshield_recipient: recipientField,
+      unshield_amount: params.amount.toString(),
+      unshield_token_address: params.note.token,
+    });
+    proofHex = Buffer.from(proof).toString("hex");
+  }
 
   status("Submitting to relayer…");
   const relayed = await submitUnshieldToRelayer({
     shieldedPool,
-    proofBytes: Buffer.from(proof).toString("hex"),
+    proofBytes: proofHex,
     nullifier: bytes32Arg(nf),
     token: tokenContract,
     recipient: params.recipientAddress,
@@ -402,14 +544,46 @@ export async function executeUnshield(params: {
     encryptedNote: encryptedChange.replace(/^0x/, ""),
     channel: bytes32Arg(route.channel),
     subchannel: bytes32Arg(route.subchannel),
+    ...(useAsp
+      ? {
+          useAsp: true,
+          ownerPk: bytes32Arg(params.keys.ownerPk),
+          aspGate: params.config.contracts.aspGate,
+          publicInputs: publicInputsHex,
+        }
+      : {}),
   });
   status("Waiting for confirmation…");
   const confirmed = await waitForRelayerConfirmation(relayed.requestId);
-  const txHash = confirmed.txHash ?? relayed.txHash ?? undefined;
+  const txHash = (confirmed.txHash ?? relayed.txHash)?.replace(/^0x/i, "").toLowerCase();
+  if (!txHash || !/^[0-9a-f]{64}$/.test(txHash)) {
+    throw new Error("Withdrawal submitted but no valid on-chain transaction hash was returned");
+  }
+
+  const rpcClient = createRpc(params.config);
+  const txStatus = await rpcClient.getTransaction(txHash);
+  if (txStatus.status !== SorobanApi.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `Withdrawal transaction did not succeed on-chain (status=${txStatus.status})`
+    );
+  }
+  const spentOnChain = await nullifierSpent(
+    rpcClient,
+    params.config,
+    params.wallet,
+    shieldedPool,
+    bytes32Arg(nf)
+  );
+  if (!spentOnChain) {
+    throw new Error(
+      "Withdrawal was not applied on-chain — the note nullifier is still unspent"
+    );
+  }
+
   const changeNote =
     changeAmount > 0n
       ? {
-          id: `${changeCommitment}:${txHash ?? relayed.requestId}`,
+          id: `${changeCommitment}:${txHash}`,
           commitment: changeCommitment,
           token: params.note.token,
           amount: changeAmount,
@@ -432,14 +606,13 @@ export async function fetchMerkleLeaves(
   startLedger?: number,
   onStatus?: (msg: string) => void
 ): Promise<Hex32[]> {
-  const rpc = createRpc(config);
   const poolId = config.contracts.shieldedPool;
   const merkleId = config.contracts.merkleTree;
-  const scanStart =
-    startLedger ??
-    (await resolvePoolStartLedger(rpc, poolId, config.contracts.deployLedger));
+  const hasher = await getBrowserPoseidonHasher();
+  const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
+  const scanStart = startLedger ?? resolved.startLedger;
   const synced = await syncMerkleLeavesValidated(
-    rpc,
+    resolved.eventsRpc,
     config,
     wallet,
     poolId,
@@ -451,7 +624,11 @@ export async function fetchMerkleLeaves(
       } else if (p.phase === "txs") {
         onStatus?.(`Syncing merkle tree… (${p.txs ?? 0}/${p.totalTxs ?? "?"} txs)`);
       }
-    }
+    },
+    {
+      hasher,
+    },
+    resolved.window
   );
   return synced.leaves;
 }

@@ -4,6 +4,13 @@ const { Api, Server: SorobanRpc } = rpc;
 
 import { decryptNoteECDH, routeForRecipient } from "./keys";
 import { poolContractEventFilter, subchannelScanWindow } from "./pool-ledger";
+import {
+  isLedgerRangeError,
+  probeLedgerWindow,
+  resolveScanLedgerRange,
+  type RpcLedgerWindow,
+} from "./rpc-events";
+import { scanDebug } from "./scan-debug";
 import { nullifierSpent } from "./soroban";
 import type { DecryptedNote, Hex32, NetworkConfig } from "./types";
 import { bytes32Arg, parseHex32 } from "./utils";
@@ -36,6 +43,12 @@ export type ScanRouteOptions = {
   indexedRouteEvents?: boolean;
   routeCursor?: number;
   tokenFieldFilter?: Hex32;
+  /** RPC retention window — clamps startLedger before getEvents. */
+  ledgerWindow?: RpcLedgerWindow;
+  /** Full history rescan: match every subchannel on the viewing channel. */
+  scanAllSubchannels?: boolean;
+  /** Expand incremental subchannel window using known local note count. */
+  knownNoteCount?: number;
   onProgress?: (p: ScanProgress) => void;
 };
 
@@ -47,35 +60,61 @@ export async function scanRouteEvents(
   viewingPub: Hex32,
   options: ScanRouteOptions = {}
 ): Promise<ScanRouteResult> {
-  const latest = await rpcClient.getLatestLedger();
-  const endLedger = latest.sequence;
-  const scanFrom = Math.min(startLedger, endLedger);
-
-  if (scanFrom > endLedger) {
-    return { notes: [], lastScannedLedger: endLedger, eventsScanned: 0, channelMatched: 0 };
+  if (!options.ledgerWindow?.rpcUrl) {
+    throw new Error("Note scan requires a probed RPC ledger window");
   }
 
-  if (options.indexedRouteEvents) {
-    return scanIndexedRouteEvents(
-      rpcClient,
-      poolId,
-      scanFrom,
-      endLedger,
-      viewingPriv,
-      viewingPub,
-      options
-    );
-  }
+  let window = options.ledgerWindow;
+  let range = resolveScanLedgerRange(startLedger, window);
 
-  return scanLegacyRouteEvents(
-    rpcClient,
+  scanDebug("scanRouteEvents:start", {
     poolId,
-    scanFrom,
-    endLedger,
-    viewingPriv,
-    viewingPub,
-    options
-  );
+    startLedger,
+    scanFrom: range.scanFrom,
+    endLedger: range.endLedger,
+    indexedRouteEvents: options.indexedRouteEvents ?? false,
+    scanAllSubchannels: options.scanAllSubchannels ?? false,
+    routeCursor: options.routeCursor ?? 0,
+    viewingPubPrefix: `${viewingPub.slice(0, 10)}…`,
+  });
+
+  if (range.scanFrom > range.endLedger) {
+    return { notes: [], lastScannedLedger: range.endLedger, eventsScanned: 0, channelMatched: 0 };
+  }
+
+  const runScan = () =>
+    options.indexedRouteEvents
+      ? scanIndexedRouteEvents(
+          rpcClient,
+          poolId,
+          range.scanFrom,
+          range.endLedger,
+          viewingPriv,
+          viewingPub,
+          options
+        )
+      : scanLegacyRouteEvents(
+          rpcClient,
+          poolId,
+          range.scanFrom,
+          range.endLedger,
+          viewingPriv,
+          viewingPub,
+          options
+        );
+
+  try {
+    return await runScan();
+  } catch (err) {
+    if (!isLedgerRangeError(err) || !window.rpcUrl) throw err;
+    window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
+    range = resolveScanLedgerRange(startLedger, window);
+    if (range.scanFrom > range.endLedger) {
+      return { notes: [], lastScannedLedger: range.endLedger, eventsScanned: 0, channelMatched: 0 };
+    }
+    options.ledgerWindow = window;
+    return await runScan();
+  }
 }
 
 /**
@@ -93,10 +132,18 @@ async function scanIndexedRouteEvents(
 ): Promise<ScanRouteResult> {
   const viewingChannel = routeForRecipient(viewingPub, 0).channel;
   const channelHex = bytes32Arg(viewingChannel).toLowerCase();
-  const subIds = new Set(subchannelScanWindow(options.routeCursor ?? 0));
-  const subchannelHex = new Set(
-    [...subIds].map((id) => bytes32Arg(routeForRecipient(viewingPub, id).subchannel).toLowerCase())
+  const windowCursor = Math.max(
+    options.routeCursor ?? 0,
+    options.knownNoteCount ?? 0,
+    (options.routeCursor ?? 0) + (options.knownNoteCount ?? 0)
   );
+  const subchannelHex = options.scanAllSubchannels
+    ? null
+    : new Set(
+        subchannelScanWindow(windowCursor).map((id) =>
+          bytes32Arg(routeForRecipient(viewingPub, id).subchannel).toLowerCase()
+        )
+      );
 
   const notes: DecryptedNote[] = [];
   let cursor: string | undefined;
@@ -135,6 +182,19 @@ async function scanIndexedRouteEvents(
   }
 
   if (eventsScanned === 0) lastScannedLedger = endLedger;
+
+  scanDebug("scanIndexedRouteEvents:done", {
+    poolId,
+    scanFrom,
+    endLedger,
+    pages,
+    eventsScanned,
+    channelMatched,
+    notesFound: notes.length,
+    scanAllSubchannels: options.scanAllSubchannels ?? false,
+    subchannelFilter: subchannelHex === null ? "all" : subchannelHex.size,
+    lastScannedLedger,
+  });
 
   return {
     notes: dedupeNotes(notes),
@@ -206,7 +266,7 @@ async function scanLegacyRouteEvents(
 function parseIndexedRouteEventForViewer(
   ev: Api.EventResponse,
   channelHex: string,
-  subchannelHex: Set<string>
+  subchannelHex: Set<string> | null
 ): RouteEvent | null {
   try {
     const topics = ev.topic ?? [];
@@ -217,7 +277,12 @@ function parseIndexedRouteEventForViewer(
     if (!evChannel || bytes32Arg(evChannel).toLowerCase() !== channelHex) return null;
 
     const evSub = bytes32FromUnknown(scValToNative(topics[2]));
-    if (!evSub || !subchannelHex.has(bytes32Arg(evSub).toLowerCase())) return null;
+    if (
+      subchannelHex !== null &&
+      (!evSub || !subchannelHex.has(bytes32Arg(evSub).toLowerCase()))
+    ) {
+      return null;
+    }
 
     const encrypted = encryptedNoteFromValue(ev.value);
     if (!encrypted) return null;

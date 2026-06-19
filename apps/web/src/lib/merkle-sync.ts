@@ -4,6 +4,16 @@ import { rpc } from "@stellar/stellar-sdk";
 const { Api, Server: SorobanRpc } = rpc;
 
 import { getMerkleNextIndex, getMerkleRoot } from "./soroban";
+import type { PoseidonHasher } from "./hasher";
+import { computeBatchMerkleRoot, computeIncrementalMerkleRoot } from "./hasher";
+import { merkleDebug, merkleDebugWarn } from "./merkle-debug";
+import {
+  isLedgerRangeError,
+  probeLedgerWindow,
+  resolveScanLedgerRange,
+  uniqueRpcUrls,
+  type RpcLedgerWindow,
+} from "./rpc-events";
 import type { DecryptedNote, Hex32, NetworkConfig } from "./types";
 import { bytes32Arg } from "./utils";
 
@@ -46,7 +56,7 @@ type PoolEventRef = {
 };
 
 const RPC_TIMEOUT_MS = 15_000;
-const MAX_EVENT_PAGES = 8;
+const MAX_EVENT_PAGES = 64;
 
 async function withRpcTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return Promise.race([
@@ -58,16 +68,22 @@ async function withRpcTimeout<T>(label: string, fn: () => Promise<T>): Promise<T
 }
 
 async function getTransactionWithTimeout(
-  rpc: SorobanRpc,
+  rpcUrls: string[],
   txHash: string
 ): Promise<Api.GetTransactionResponse | null> {
-  try {
-    return await withRpcTimeout(`getTransaction ${txHash.slice(0, 8)}`, () =>
-      rpc.getTransaction(txHash)
-    );
-  } catch {
-    return null;
+  for (const rpcUrl of rpcUrls) {
+    const server = new SorobanRpc(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
+    try {
+      const tx = await withRpcTimeout(`getTransaction ${txHash.slice(0, 8)}`, () =>
+        server.getTransaction(txHash)
+      );
+      if (tx.status === Api.GetTransactionStatus.NOT_FOUND || !tx.envelopeXdr) continue;
+      return tx;
+    } catch {
+      /* try next RPC */
+    }
   }
+  return null;
 }
 
 export type MerkleSyncProgress = {
@@ -82,19 +98,26 @@ export async function syncMerkleLeaves(
   rpc: SorobanRpc,
   poolId: string,
   startLedger: number,
-  onProgress?: (p: MerkleSyncProgress) => void
+  onProgress?: (p: MerkleSyncProgress) => void,
+  ledgerWindow?: RpcLedgerWindow,
+  options?: { aspGateId?: string; txRpcUrls?: string[] }
 ): Promise<Hex32[]> {
   const eventRefs: PoolEventRef[] = [];
   let cursor: string | undefined;
-  const latest = await withRpcTimeout("getLatestLedger", () => rpc.getLatestLedger());
-  const endLedger = latest.sequence;
-  const safeStart = Number.isFinite(startLedger) && startLedger > 0 ? startLedger : 1;
-  const scanFrom = Math.min(safeStart, Math.max(endLedger - 5000, 1));
+
+  let window = ledgerWindow;
+  if (!window?.rpcUrl) {
+    throw new Error("Merkle sync requires a probed RPC ledger window");
+  }
+  window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
+  const { scanFrom, endLedger } = resolveScanLedgerRange(startLedger, window);
+
+  if (scanFrom > endLedger) return [];
 
   onProgress?.({ phase: "events", events: 0 });
 
-  for (let pages = 0; pages < MAX_EVENT_PAGES; pages++) {
-    const page = await withRpcTimeout("getEvents", () =>
+  const fetchPage = (useRange: { scanFrom: number; endLedger: number }) =>
+    withRpcTimeout("getEvents", () =>
       cursor
         ? rpc.getEvents({
             cursor,
@@ -102,12 +125,25 @@ export async function syncMerkleLeaves(
             limit: 200,
           })
         : rpc.getEvents({
-            startLedger: scanFrom,
-            endLedger,
+            startLedger: useRange.scanFrom,
+            endLedger: useRange.endLedger,
             filters: [{ type: "contract", contractIds: [poolId] }],
             limit: 200,
           })
     );
+
+  let range = { scanFrom, endLedger };
+  for (let pages = 0; pages < MAX_EVENT_PAGES; pages++) {
+    let page: Awaited<ReturnType<SorobanRpc["getEvents"]>>;
+    try {
+      page = await fetchPage(range);
+    } catch (err) {
+      if (!isLedgerRangeError(err) || !window.rpcUrl) throw err;
+      window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
+      range = resolveScanLedgerRange(startLedger, window);
+      if (range.scanFrom > range.endLedger) break;
+      page = await fetchPage(range);
+    }
 
     for (const ev of page.events) {
       eventRefs.push({
@@ -144,18 +180,32 @@ export async function syncMerkleLeaves(
   const BATCH = 8;
   onProgress?.({ phase: "txs", txs: 0, totalTxs: uniqueRefs.length });
 
+  const txRpcUrls =
+    options?.txRpcUrls?.length
+      ? options.txRpcUrls
+      : ledgerWindow?.rpcUrl
+        ? [ledgerWindow.rpcUrl]
+        : [];
+  const aspGateId = options?.aspGateId;
+
   for (let i = 0; i < uniqueRefs.length; i += BATCH) {
     const chunk = uniqueRefs.slice(i, i + BATCH);
     const parts = await Promise.all(
       chunk.map(async (ref) => {
-        const tx = await getTransactionWithTimeout(rpc, ref.txHash);
+        const tx = await getTransactionWithTimeout(txRpcUrls, ref.txHash);
         if (!tx || tx.status !== Api.GetTransactionStatus.SUCCESS) return [] as Hex32[];
-        return extractCommitmentsFromTx(tx, poolId);
+        return extractCommitmentsFromTx(tx, poolId, aspGateId);
       })
     );
     for (const extracted of parts) leaves.push(...extracted);
     onProgress?.({ phase: "txs", txs: Math.min(i + BATCH, uniqueRefs.length), totalTxs: uniqueRefs.length });
   }
+
+  merkleDebug("syncMerkleLeaves:done", {
+    events: eventRefs.length,
+    uniqueTxs: uniqueRefs.length,
+    leafCount: leaves.length,
+  });
 
   return leaves;
 }
@@ -174,9 +224,13 @@ export async function readOnChainMerkleState(
   return { nextIndex, root };
 }
 
+export type MerkleVerifyOptions = {
+  hasher: PoseidonHasher;
+};
+
 /**
- * Rebuild leaves from pool txs and verify count matches on-chain next_index.
- * Retries when RPC indexing lags behind the merkle contract.
+ * Rebuild leaves from pool txs and verify count + root against on-chain merkle tree.
+ * Reads on-chain state after leaf rebuild (avoids race with concurrent inserts).
  */
 export async function syncMerkleLeavesValidated(
   rpc: SorobanRpc,
@@ -185,25 +239,85 @@ export async function syncMerkleLeavesValidated(
   poolId: string,
   merkleId: string,
   startLedger: number,
-  onProgress?: (p: MerkleSyncProgress) => void
+  onProgress?: (p: MerkleSyncProgress) => void,
+  verify?: MerkleVerifyOptions,
+  ledgerWindow?: RpcLedgerWindow
 ): Promise<ValidatedMerkleSync> {
   let lastLeaves: Hex32[] = [];
   let lastState: OnChainMerkleState = { nextIndex: 0, root: `0x${"00".repeat(32)}` as Hex32 };
 
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const [state, leaves] = await Promise.all([
-      readOnChainMerkleState(rpc, config, wallet, merkleId),
-      syncMerkleLeaves(rpc, poolId, startLedger, onProgress),
-    ]);
+  merkleDebug("sync:start", { poolId, merkleId, startLedger });
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txRpcUrls = uniqueRpcUrls(config);
+    const leaves = await syncMerkleLeaves(rpc, poolId, startLedger, onProgress, ledgerWindow, {
+      aspGateId: config.contracts.aspGate ?? undefined,
+      txRpcUrls,
+    });
+    const state = await readOnChainMerkleState(rpc, config, wallet, merkleId);
     lastState = state;
     lastLeaves = leaves;
 
-    if (leaves.length === state.nextIndex) {
-      return { ...state, leaves };
+    merkleDebug("sync:attempt", {
+      attempt,
+      leafCount: leaves.length,
+      nextIndex: state.nextIndex,
+      onChainRoot: state.root,
+    });
+
+    if (leaves.length !== state.nextIndex) {
+      if (attempt < 5) {
+        merkleDebugWarn("sync:countMismatch", {
+          attempt,
+          leaves: leaves.length,
+          nextIndex: state.nextIndex,
+        });
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      break;
     }
-    if (attempt < 3) {
-      await new Promise((r) => setTimeout(r, 1200));
+
+    if (verify?.hasher) {
+      const [incremental, batch] = await Promise.all([
+        computeIncrementalMerkleRoot(verify.hasher, leaves),
+        computeBatchMerkleRoot(verify.hasher, leaves),
+      ]);
+      const onChain = state.root.toLowerCase();
+      const incMatch = incremental.toLowerCase() === onChain;
+      const batchMatch = batch.toLowerCase() === onChain;
+
+      merkleDebug("sync:rootCheck", {
+        attempt,
+        incremental,
+        batch,
+        onChain: state.root,
+        incMatch,
+        batchMatch,
+      });
+
+      if (!incMatch && !batchMatch) {
+        if (attempt < 5) {
+          merkleDebugWarn("sync:rootMismatchRetry", {
+            attempt,
+            incremental,
+            batch,
+            onChain: state.root,
+          });
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        throw new Error(
+          `Merkle root mismatch: rebuilt ${leaves.length} leaves but local root differs from get_last_root() (incremental=${incremental}, batch=${batch}, on-chain=${state.root})`
+        );
+      }
     }
+
+    merkleDebug("sync:done", {
+      leafCount: leaves.length,
+      root: state.root,
+    });
+    return { ...state, leaves };
   }
 
   throw new Error(
@@ -211,21 +325,38 @@ export async function syncMerkleLeavesValidated(
   );
 }
 
-function extractCommitmentsFromTx(tx: Api.GetTransactionResponse, poolId: string): Hex32[] {
+function extractCommitmentsFromTx(
+  tx: Api.GetTransactionResponse,
+  poolId: string,
+  aspGateId?: string
+): Hex32[] {
   const out: Hex32[] = [];
   const envelope = parseEnvelope(tx.envelopeXdr);
   if (!envelope) return out;
   const ops = getEnvelopeOperations(envelope);
   for (const op of ops) {
-    if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) continue;
-    const invoke = op.body().invokeHostFunctionOp();
-    const host = invoke.hostFunction();
-    if (host.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) continue;
-    const invokeContract = host.invokeContract();
-    const contract = Address.fromScAddress(invokeContract.contractAddress()).toString();
-    if (contract !== poolId) continue;
-    const fn = invokeContract.functionName().toString();
-    const args = invokeContract.args();
+    const extracted = extractCommitmentsFromOp(op, poolId, aspGateId);
+    out.push(...extracted);
+  }
+  return out;
+}
+
+/** Extract commitments from a single operation (pool insert order). */
+function extractCommitmentsFromOp(
+  op: xdr.Operation,
+  poolId: string,
+  aspGateId?: string
+): Hex32[] {
+  const out: Hex32[] = [];
+  if (op.body().switch() !== xdr.OperationType.invokeHostFunction()) return out;
+  const invoke = op.body().invokeHostFunctionOp();
+  const host = invoke.hostFunction();
+  if (host.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) return out;
+  const invokeContract = host.invokeContract();
+  const contract = Address.fromScAddress(invokeContract.contractAddress()).toString();
+  const fn = invokeContract.functionName().toString();
+  const args = invokeContract.args();
+  if (contract === poolId) {
     if (fn === "shield_routed" && args.length >= 4) {
       const c = scValBytesToHex32(args[3]);
       if (c) out.push(c);
@@ -234,9 +365,19 @@ function extractCommitmentsFromTx(tx: Api.GetTransactionResponse, poolId: string
       if (meta.length >= 256) {
         out.push(`0x${meta.slice(128, 192)}` as Hex32, `0x${meta.slice(192, 256)}` as Hex32);
       }
-    } else if (fn === "unshield" && args.length >= 7) {
+    } else if (
+      (fn === "unshield" || fn === "unshield_with_asp" || fn === "fulfill_unshield") &&
+      args.length >= 7
+    ) {
       const c = scValBytesToHex32(args[6]);
       if (c && c !== `0x${"00".repeat(32)}`) out.push(c);
+    }
+  } else if (aspGateId && contract === aspGateId && fn === "unshield_asp" && args.length >= 2) {
+    // ASP gate packs new_commitment at byte offset 64 in meta (see asp-gate buildUnshieldAspMeta).
+    const meta = scValBytesToHex(args[1]);
+    if (meta.length >= 192) {
+      const c = `0x${meta.slice(128, 192)}` as Hex32;
+      if (c !== `0x${"00".repeat(32)}`) out.push(c);
     }
   }
   return out;

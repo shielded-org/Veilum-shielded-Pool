@@ -86,6 +86,34 @@ export async function getMerkleNextIndex(
   return Number(tx.result!);
 }
 
+export async function merkleIsKnownRoot(
+  rpcClient: SorobanRpc,
+  config: NetworkConfig,
+  source: string,
+  merkleId: string,
+  root: string
+): Promise<boolean> {
+  const client = merkleTreeClient(config, source, merkleId, rpcClient);
+  const tx = await client.is_known_root({ root: bufferFromHex32(root) });
+  return Boolean(tx.result);
+}
+
+export async function merkleHash2(
+  rpcClient: SorobanRpc,
+  config: NetworkConfig,
+  source: string,
+  merkleId: string,
+  left: string,
+  right: string
+): Promise<`0x${string}`> {
+  const client = merkleTreeClient(config, source, merkleId, rpcClient);
+  const tx = await client.hash2({
+    left: bufferFromHex32(left),
+    right: bufferFromHex32(right),
+  });
+  return hexFromBuffer(tx.result!);
+}
+
 export async function nullifierSpent(
   rpcClient: SorobanRpc,
   config: NetworkConfig,
@@ -134,7 +162,8 @@ export async function shieldRouted(
   commitment: string,
   encryptedNote: string,
   channel: string,
-  subchannel: string
+  subchannel: string,
+  aspMeta = ""
 ): Promise<string> {
   const client = shieldedPoolClient(config, caller, poolId, rpcClient, true);
   const tx = await client.shield_routed(
@@ -146,6 +175,7 @@ export async function shieldRouted(
       encrypted_note: bufferFromHex(encryptedNote),
       channel: bufferFromHex32(channel),
       subchannel: bufferFromHex32(subchannel),
+      asp_meta: bufferFromHex(aspMeta),
     },
     { timeoutInSeconds: 180 }
   );

@@ -3,7 +3,9 @@ import { Address, nativeToScVal, xdr, rpc } from "@stellar/stellar-sdk";
 const { Server: SorobanRpc } = rpc;
 
 import { routeForRecipient } from "./keys";
-import type { Hex32 } from "./types";
+import { clampScanLedger, pickEventsRpc, type RpcLedgerWindow } from "./rpc-events";
+import { scanDebug } from "./scan-debug";
+import type { Hex32, NetworkConfig } from "./types";
 import { bytes32Arg } from "./utils";
 
 /** Base64 ScVal XDR for Soroban symbol `route` — used in getEvents topic filters. */
@@ -47,29 +49,39 @@ export function legacyRouteEventFilter(poolId: string) {
 
 /** Resolve the ledger to begin scanning pool route events from. */
 export async function resolvePoolStartLedger(
-  rpcClient: SorobanRpc,
+  config: NetworkConfig,
   poolId: string,
   deployLedger?: number
-): Promise<number> {
-  if (deployLedger && deployLedger > 0) {
-    return Math.max(deployLedger - 50, 1);
+): Promise<{ startLedger: number; window: RpcLedgerWindow; eventsRpc: SorobanRpc }> {
+  const { rpc: eventsRpc, window } = await pickEventsRpc(config, poolId, deployLedger, { force: true });
+  const instanceLedger = await fetchContractInstanceLedger(eventsRpc, poolId);
+
+  // Start at deploy ledger (minus buffer), clamped to RPC retention — same as shielded-token poolDeployBlock.
+  let desired =
+    deployLedger && deployLedger > 0
+      ? deployLedger - 50
+      : instanceLedger && instanceLedger > 0
+        ? instanceLedger - 50
+        : window.oldest;
+
+  if (instanceLedger && instanceLedger > 0 && (!deployLedger || deployLedger <= 0)) {
+    desired = Math.min(desired, instanceLedger - 50);
   }
 
-  const latest = await rpcClient.getLatestLedger();
-  const probeStart = Math.max(latest.sequence - 5000, 1);
-  const probe = await rpcClient.getEvents({
-    startLedger: probeStart,
-    filters: [poolContractEventFilter(poolId)],
-    limit: 1,
+  const startLedger = clampScanLedger(desired, window);
+
+  scanDebug("resolvePoolStartLedger", {
+    poolId,
+    deployLedger: deployLedger ?? null,
+    instanceLedger,
+    rpcOldest: window.oldest,
+    rpcLatest: window.latest,
+    rpcUrl: window.rpcUrl,
+    desiredStart: desired,
+    clampedStart: startLedger,
   });
-  const oldest = probe.oldestLedger;
 
-  const instanceLedger = await fetchContractInstanceLedger(rpcClient, poolId);
-  if (instanceLedger) {
-    return Math.max(instanceLedger - 50, oldest);
-  }
-
-  return oldest;
+  return { startLedger, window, eventsRpc };
 }
 
 async function fetchContractInstanceLedger(
@@ -93,8 +105,8 @@ async function fetchContractInstanceLedger(
   }
 }
 
-/** Subchannel indices to scan in parallel (matches shielded-token route cursor window). */
+/** Subchannel indices to scan — must include every subchannel used (0 … routeCursor). */
 export function subchannelScanWindow(routeCursor: number): number[] {
-  const count = Math.max(routeCursor + 8, 12);
+  const count = Math.max(routeCursor + 1, routeCursor + 8, 12);
   return Array.from({ length: count }, (_, i) => i);
 }

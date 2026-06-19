@@ -1,13 +1,15 @@
 import { loadNetworkConfig } from "./config";
 import { getBrowserPoseidonHasher, nullifier } from "./hasher";
 import { attachLeafIndices } from "./merkle-sync";
-import { mergeNotes, reconcileChainNotes, shieldedTotal } from "./note-store";
+import { dropPhantomNoteIds, mergeNotes, reconcileChainNotes, shieldedTotal } from "./note-store";
 import { resolvePoolStartLedger } from "./pool-ledger";
 import type { ScanCachePayload } from "./scan-cache";
-import { pickRefreshMode } from "./scan-cache";
+import { pickRefreshMode, sanitizeScanCache } from "./scan-cache";
 import { resolveNoteSpendStatus, scanRouteEvents } from "./scan";
+import { scanDebug, scanDebugWarn, scanRpcLabel } from "./scan-debug";
 import { fetchMerkleLeaves } from "./shield-ops";
 import { createRpc } from "./soroban";
+import { historyGapBeforeWindow, pickEventsRpc, resolveScanLedgerRange } from "./rpc-events";
 import { useShieldedStore } from "../store/use-shielded-store";
 import type { DecryptedNote, Hex32, NetworkName } from "./types";
 
@@ -47,60 +49,158 @@ export async function refreshShieldedWallet(params: {
   const spending = BigInt(params.spendingKey);
   const poolId = config.contracts.shieldedPool;
   const indexedRouteEvents = config.contracts.indexedRouteEvents === true;
+  const deployLedger = config.contracts.deployLedger;
   const metadataNotes = params.existingNotes ?? [];
 
-  const mode = params.mode ?? pickRefreshMode(params.priorScanCache ?? null);
+  scanDebug("refresh:start", {
+    network: params.network,
+    poolId,
+    deployLedger: deployLedger ?? null,
+    modeRequested: params.mode ?? null,
+    metadataNoteCount: metadataNotes.length,
+    walletPrefix: params.wallet ? `${params.wallet.slice(0, 8)}…` : null,
+    viewingPubPrefix: params.viewingPub ? `${params.viewingPub.slice(0, 10)}…` : null,
+    priorCacheLedger: params.priorScanCache?.lastScannedLedger ?? null,
+  });
 
-  let poolDeployLedger = 1;
+  let poolDeployLedger: number | null = null;
+  let ledgerWindow: Awaited<ReturnType<typeof resolvePoolStartLedger>>["window"] | undefined;
+  let eventsRpc = rpc;
   try {
-    poolDeployLedger = await resolvePoolStartLedger(rpc, poolId, config.contracts.deployLedger);
+    const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
+    poolDeployLedger = resolved.startLedger;
+    ledgerWindow = resolved.window;
+    eventsRpc = resolved.eventsRpc;
+    if (historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
+      warnings.push(
+        `Pool deploy ledger ${config.contracts.deployLedger} predates RPC event history (oldest ${resolved.window.oldest}). Notes from before that ledger cannot be recovered via RPC.`
+      );
+    }
   } catch (e) {
     warnings.push(`Could not resolve scan start ledger: ${errMsg(e)}`);
+    try {
+      const fallback = await pickEventsRpc(config, poolId, config.contracts.deployLedger, { force: true });
+      ledgerWindow = fallback.window;
+      eventsRpc = fallback.rpc;
+      poolDeployLedger = resolveScanLedgerRange(
+        config.contracts.deployLedger ?? fallback.window.oldest,
+        fallback.window
+      ).scanFrom;
+    } catch {
+      /* note scan skipped below when window is unavailable */
+    }
   }
 
-  let scanFromLedger = poolDeployLedger;
-  let lastScannedLedger = params.priorScanCache?.lastScannedLedger ?? poolDeployLedger - 1;
+  const priorCache = sanitizeScanCache(params.priorScanCache, ledgerWindow, deployLedger);
+  let mode = params.mode ?? pickRefreshMode(priorCache, { hasNotes: metadataNotes.length > 0, deployLedger });
 
+  let scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
+  let lastScannedLedger = priorCache?.lastScannedLedger ?? scanFromLedger - 1;
+
+  if (mode === "full") {
+    scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
+    lastScannedLedger = scanFromLedger - 1;
+  } else if (
+    mode === "incremental" &&
+    priorCache &&
+    priorCache.viewingPub.toLowerCase() === params.viewingPub.toLowerCase()
+  ) {
+    scanFromLedger = Math.max(
+      poolDeployLedger ?? ledgerWindow?.oldest ?? 1,
+      priorCache.lastScannedLedger + 1
+    );
+    lastScannedLedger = priorCache.lastScannedLedger;
+  }
+
+  const endLedgerHint = ledgerWindow?.latest;
   if (
     mode === "incremental" &&
-    params.priorScanCache &&
-    params.priorScanCache.viewingPub.toLowerCase() === params.viewingPub.toLowerCase()
+    metadataNotes.length === 0 &&
+    endLedgerHint != null &&
+    scanFromLedger > endLedgerHint
   ) {
-    scanFromLedger = Math.max(poolDeployLedger, params.priorScanCache.lastScannedLedger + 1);
-    lastScannedLedger = params.priorScanCache.lastScannedLedger;
+    mode = "full";
+    scanFromLedger = poolDeployLedger ?? ledgerWindow!.oldest;
+    lastScannedLedger = scanFromLedger - 1;
   }
 
+  if (ledgerWindow) {
+    const range = resolveScanLedgerRange(scanFromLedger, ledgerWindow);
+    scanFromLedger = range.scanFrom;
+  }
+
+  scanDebug("refresh:scanPlan", {
+    mode,
+    deployLedger: deployLedger ?? null,
+    poolDeployLedger,
+    scanFromLedger,
+    endLedger: ledgerWindow?.latest ?? null,
+    rpcOldest: ledgerWindow?.oldest ?? null,
+    eventsRpc: ledgerWindow?.rpcUrl ? scanRpcLabel(ledgerWindow.rpcUrl) : null,
+    indexedRouteEvents,
+    routeCursor: params.routeCursor ?? 0,
+    scanAllSubchannels: mode === "full",
+    priorCacheLedger: priorCache?.lastScannedLedger ?? null,
+  });
+
   let routeEventsScanned = 0;
-  let chainNotes: DecryptedNote[] = mode === "full" ? [] : metadataNotes;
+  let channelMatched = 0;
+  /** Start from local notes — never wipe on a failed or empty chain scan. */
+  let chainNotes: DecryptedNote[] = metadataNotes;
   let scanSkipped = false;
 
   try {
-    const latest = await rpc.getLatestLedger();
-    if (scanFromLedger > latest.sequence) {
+    if (!ledgerWindow) {
       scanSkipped = true;
-      lastScannedLedger = latest.sequence;
+      warnings.push("Note scan skipped: RPC event window unavailable");
     } else {
-      const delta = await scanRouteEvents(rpc, poolId, scanFromLedger, viewingPriv, params.viewingPub, {
-        indexedRouteEvents,
-        routeCursor: params.routeCursor ?? 0,
-        onProgress: (p) => {
-          routeEventsScanned = p.eventsScanned;
-          params.onScanProgress?.(p.notesFound, p.eventsScanned);
-        },
-      });
-      routeEventsScanned = delta.eventsScanned;
-      lastScannedLedger = Math.max(lastScannedLedger, delta.lastScannedLedger);
+      const fresh = await pickEventsRpc(config, poolId, config.contracts.deployLedger, { force: true });
+      ledgerWindow = fresh.window;
+      eventsRpc = fresh.rpc;
+      const range = resolveScanLedgerRange(scanFromLedger, ledgerWindow);
+      if (range.scanFrom > range.endLedger) {
+        scanSkipped = true;
+        lastScannedLedger = range.endLedger;
+      } else {
+        scanFromLedger = range.scanFrom;
+        const delta = await scanRouteEvents(eventsRpc, poolId, scanFromLedger, viewingPriv, params.viewingPub, {
+          indexedRouteEvents,
+          routeCursor: params.routeCursor ?? 0,
+          ledgerWindow,
+          scanAllSubchannels: mode === "full",
+          knownNoteCount: metadataNotes.filter((n) => !n.spent).length,
+          onProgress: (p) => {
+            routeEventsScanned = p.eventsScanned;
+            channelMatched = p.channelMatched;
+            params.onScanProgress?.(p.notesFound, p.eventsScanned);
+          },
+        });
+        routeEventsScanned = delta.eventsScanned;
+        channelMatched = delta.channelMatched;
+        lastScannedLedger = Math.max(lastScannedLedger, delta.lastScannedLedger);
 
-      if (mode === "full") {
-        chainNotes = reconcileChainNotes(delta.notes, metadataNotes);
-      } else if (delta.notes.length > 0) {
-        chainNotes = mergeNotes(metadataNotes, delta.notes);
+        if (mode === "full") {
+          chainNotes = reconcileChainNotes(delta.notes, metadataNotes);
+        } else if (delta.notes.length > 0) {
+          chainNotes = mergeNotes(metadataNotes, delta.notes);
+        }
       }
     }
   } catch (e) {
     warnings.push(`Note scan failed: ${errMsg(e)}`);
-    chainNotes = mode === "full" ? [] : metadataNotes;
+    scanDebugWarn("refresh:scanFailed", { error: errMsg(e) });
   }
+
+  scanDebug("refresh:scanDone", {
+    mode,
+    scanSkipped,
+    routeEventsScanned,
+    channelMatched,
+    chainNoteCount: chainNotes.length,
+    metadataNoteCount: metadataNotes.length,
+    lastScannedLedger,
+    warnings,
+  });
 
   if (chainNotes.length > 0 && (routeEventsScanned > 0 || !scanSkipped || mode === "full")) {
     params.onNotesReady?.(chainNotes, shieldedTotal(chainNotes));
@@ -120,12 +220,12 @@ export async function refreshShieldedWallet(params: {
   const syncMerkle = params.syncMerkle ?? false;
   if (syncMerkle) {
     try {
-      merkleLeaves = await fetchMerkleLeaves(config, params.wallet, poolDeployLedger);
+      merkleLeaves = await fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined);
     } catch (e) {
       warnings.push(`Merkle sync failed: ${errMsg(e)}`);
     }
   } else {
-    void fetchMerkleLeaves(config, params.wallet, poolDeployLedger)
+    void fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined)
       .then((leaves) => {
         const state = useShieldedStore.getState();
         state.setMerkleLeaves(leaves);
@@ -136,11 +236,22 @@ export async function refreshShieldedWallet(params: {
       });
   }
 
-  const notesWithLeaves = attachLeafIndices(notesWithSpend, merkleLeaves);
+  const notesWithLeaves = dropPhantomNoteIds(attachLeafIndices(notesWithSpend, merkleLeaves));
 
-  if (routeEventsScanned > 0 && chainNotes.length === 0 && mode === "full") {
+  if (channelMatched > 0 && chainNotes.length === 0 && mode === "full") {
     warnings.push(
-      "Found route events for your channel but none decrypted — reconnect your wallet to re-derive keys."
+      "Found route events for your channel but none decrypted — use Sync keys if you switched wallets or browsers."
+    );
+  }
+
+  if (
+    mode === "full" &&
+    channelMatched > 0 &&
+    chainNotes.length > 0 &&
+    channelMatched > chainNotes.length
+  ) {
+    warnings.push(
+      `Recovered ${chainNotes.length} of ${channelMatched} route events for your channel — some notes may use different keys or subchannels.`
     );
   }
 
@@ -149,7 +260,7 @@ export async function refreshShieldedWallet(params: {
     notes: notesWithLeaves,
     merkleLeaves,
     shieldedBalance: shieldedTotal(notesWithLeaves),
-    scanStartLedger: poolDeployLedger,
+    scanStartLedger: poolDeployLedger ?? ledgerWindow?.oldest ?? 0,
     lastScannedLedger,
     routeEventsScanned,
     warnings,
@@ -157,7 +268,8 @@ export async function refreshShieldedWallet(params: {
     scanCacheOut: {
       viewingPub: params.viewingPub,
       lastScannedLedger,
-      lastFullScanAt: mode === "full" ? now : params.priorScanCache?.lastFullScanAt,
+      lastFullScanAt: mode === "full" ? now : priorCache?.lastFullScanAt,
+      deployLedger,
     },
   };
 }
@@ -171,12 +283,10 @@ async function resolveAllNoteSpendStatus(
   spending: bigint
 ): Promise<DecryptedNote[]> {
   if (notes.length === 0) return [];
-  const unspent = notes.filter((n) => n.spent !== true);
-  if (unspent.length === 0) return notes;
 
   try {
     const hasher = await getBrowserPoseidonHasher();
-    const unspentIds = new Set(unspent.map((n) => n.id));
+    // Always check on-chain nullifiers — local `spent` is optimistic and may be wrong.
     return await resolveNoteSpendStatus(
       rpc,
       config,
@@ -184,8 +294,7 @@ async function resolveAllNoteSpendStatus(
       wallet,
       notes,
       spending,
-      (sk, c) => nullifier(hasher, sk, c),
-      unspentIds
+      (sk, c) => nullifier(hasher, sk, c)
     );
   } catch {
     return notes.map((n) => ({ ...n, spent: n.spent ?? false }));
@@ -193,5 +302,20 @@ async function resolveAllNoteSpendStatus(
 }
 
 function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    if (typeof o.message === "string") return o.message;
+    if (typeof o.error === "string") return o.error;
+    if (o.error && typeof o.error === "object" && typeof (o.error as { message?: string }).message === "string") {
+      return (o.error as { message: string }).message;
+    }
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
+    }
+  }
+  return String(e);
 }

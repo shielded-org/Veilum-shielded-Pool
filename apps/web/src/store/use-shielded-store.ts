@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { DecryptedNote, Hex32, NetworkName, TransactionRecord } from "../lib/types";
-import { deserializeNote, serializeNote, shieldedTotal } from "../lib/note-store";
+import { deserializeNote, mergeNotes, serializeNote, shieldedTotal } from "../lib/note-store";
 import type { StoredScanCacheRow } from "../lib/scan-cache";
 import { payloadToStoredRow } from "../lib/scan-cache";
 import type { ScanCachePayload } from "../lib/scan-cache";
@@ -101,7 +101,7 @@ export const useShieldedStore = create<ShieldedState>()(
         }),
       setNotes: (notes) => set({ notes, shieldedBalance: shieldedTotal(notes) }),
       addNote: (note) => {
-        const notes = [...get().notes.filter((n) => n.id !== note.id), note];
+        const notes = mergeNotes(get().notes, [note]);
         set({ notes, shieldedBalance: shieldedTotal(notes) });
       },
       markNoteSpent: (id) => {
@@ -127,6 +127,7 @@ export const useShieldedStore = create<ShieldedState>()(
           viewingPub: row.viewingPub,
           lastScannedLedger: row.lastScannedLedger,
           lastFullScanAt: row.lastFullScanAt,
+          deployLedger: row.deployLedger,
         };
       },
       bumpRouteCursor: () => {
