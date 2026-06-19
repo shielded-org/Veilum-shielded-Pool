@@ -16,7 +16,7 @@
     "build:sdk": "npm run build --workspace @stellar-shielded/sdk",
     "install:noir-toolchain": "bash scripts/install-noir-toolchain.sh",
     "bootstrap:relayer-circuits": "bash scripts/bootstrap-relayer-circuits.sh",
-    "build:relayer:render": "bash scripts/install-noir-toolchain.sh && npm install && npm run build:sdk && bash scripts/bootstrap-relayer-circuits.sh",
+    "build:relayer:render": "npm install && npm run build:sdk && bash scripts/bootstrap-relayer-circuits.sh",
     "dev:web": "npm run dev --workspace @stellar-shielded/web",
     "dev:relayer": "npm run dev --workspace @stellar-shielded/relayer",
     "e2e:devnet": "node scripts/devnet-e2e.mjs",

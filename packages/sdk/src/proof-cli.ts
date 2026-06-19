@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { ProofInputs } from "./proof.js";
+import { generateUltraHonkProof, stripPublicInputsFromProof } from "./proof.js";
 import { PROOF_BYTES, PUBLIC_INPUT_COUNT } from "./types.js";
 
 export function writeProverToml(circuitsDir: string, payload: ProofInputs) {
@@ -65,6 +66,16 @@ function runOrThrow(cmd: string, args: string[], cwd: string) {
   }
 }
 
+function hasNativeProvingToolchain() {
+  try {
+    execFileSync("nargo", ["--version"], { stdio: "ignore", env: toolEnv() });
+    execFileSync("bb", ["--version"], { stdio: "ignore", env: toolEnv() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function proveInCircuitsDir(circuitsDir: string, inputs: ProofInputs) {
   const bytecode = join(circuitsDir, "target/shielded_transfer.json");
   if (!existsSync(bytecode)) {
@@ -107,11 +118,28 @@ function proveInCircuitsDir(circuitsDir: string, inputs: ProofInputs) {
   return { proofBytes: Buffer.from(proofBytes), publicInputsBytes };
 }
 
+async function proveWithWasm(circuitsDir: string, inputs: ProofInputs) {
+  let { proofBytes, publicInputsBytes } = await generateUltraHonkProof(inputs, circuitsDir);
+  if (proofBytes.length === PUBLIC_INPUT_COUNT * 32 + PROOF_BYTES) {
+    proofBytes = stripPublicInputsFromProof(proofBytes);
+  } else if (proofBytes.length > PROOF_BYTES) {
+    proofBytes = proofBytes.subarray(proofBytes.length - PROOF_BYTES);
+  }
+  return { proofBytes, publicInputsBytes };
+}
+
 let proveChain: Promise<unknown> = Promise.resolve();
 
-/** Serialized nargo+bb prove — one at a time on the shared circuits dir. */
+export function nativeProvingToolchainAvailable() {
+  return hasNativeProvingToolchain();
+}
+
+/** Prove with native nargo+bb when available, otherwise bb.js WASM (Render-friendly). */
 export async function generateUltraHonkProofCli(circuitsDir: string, inputs: ProofInputs) {
-  const run = () => proveInCircuitsDir(circuitsDir, inputs);
+  const run = () =>
+    hasNativeProvingToolchain()
+      ? proveInCircuitsDir(circuitsDir, inputs)
+      : proveWithWasm(circuitsDir, inputs);
   const next = proveChain.then(run, run);
   proveChain = next.then(
     () => undefined,

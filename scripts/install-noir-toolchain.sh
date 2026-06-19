@@ -58,8 +58,17 @@ install_bb() {
 
   url="https://github.com/AztecProtocol/aztec-packages/releases/download/${BB_VERSION}/${file}"
   tmp="$(mktemp -d)"
-  curl -fsSL "$url" -o "$tmp/bb.tar.gz"
+  if ! curl -fsSL "$url" -o "$tmp/bb.tar.gz"; then
+    echo "Warning: failed to download bb — relayer will use WASM proving fallback" >&2
+    rm -rf "$tmp"
+    return
+  fi
   tar -xzf "$tmp/bb.tar.gz" -C "$tmp"
+  if ! "$tmp/bb" --version >/dev/null 2>&1; then
+    echo "Warning: bb binary is incompatible with this host (glibc) — relayer will use WASM proving fallback" >&2
+    rm -rf "$tmp"
+    return
+  fi
   install -m 755 "$tmp/bb" "$TOOLCHAIN_BIN/bb"
   rm -rf "$tmp"
   echo "bb -> $TOOLCHAIN_BIN/bb"
@@ -68,6 +77,14 @@ install_bb() {
 install_nargo
 install_bb
 
-echo "Noir toolchain ready:"
-"$TOOLCHAIN_BIN/nargo" --version
-"$TOOLCHAIN_BIN/bb" --version
+echo "Noir toolchain status:"
+if [ -x "$TOOLCHAIN_BIN/nargo" ]; then
+  "$TOOLCHAIN_BIN/nargo" --version
+else
+  echo "nargo: not installed (WASM proving fallback will be used)"
+fi
+if [ -x "$TOOLCHAIN_BIN/bb" ]; then
+  "$TOOLCHAIN_BIN/bb" --version
+else
+  echo "bb: not installed (WASM proving fallback will be used)"
+fi

@@ -7,7 +7,7 @@ import path from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { generateUltraHonkProofCli } from "@stellar-shielded/sdk";
+import { generateUltraHonkProofCli, nativeProvingToolchainAvailable } from "@stellar-shielded/sdk";
 import { Keypair } from "@stellar/stellar-sdk";
 
 import { createSorobanSubmitter } from "./soroban-submit.js";
@@ -46,13 +46,16 @@ function hasStellarCli() {
 }
 
 function hasProvingToolchain() {
-  try {
-    execFileSync("nargo", ["--version"], { stdio: "ignore", env: process.env });
-    execFileSync("bb", ["--version"], { stdio: "ignore", env: process.env });
-    return true;
-  } catch {
-    return false;
-  }
+  const bytecode = path.join(CIRCUITS_DIR, "target/shielded_transfer.json");
+  if (!existsSync(bytecode)) return false;
+  if (nativeProvingToolchainAvailable()) return true;
+  // bb.js WASM fallback — no native nargo/bb required (used on Render).
+  return existsSync(path.resolve(RELAYER_ROOT, "../../node_modules/@aztec/bb.js"));
+}
+
+function provingMode() {
+  if (!hasProvingToolchain()) return "unavailable";
+  return nativeProvingToolchainAvailable() ? "cli" : "wasm";
 }
 
 function ensureCircuitArtifacts() {
@@ -324,7 +327,7 @@ async function resolveTransferProofBytes(body) {
   if (body.proofInputs) {
     if (!hasProvingToolchain()) {
       throw new Error(
-        "Relayer proving toolchain unavailable (install nargo + bb on the server, or send proofBytes)"
+        "Relayer proving unavailable — missing circuit bytecode or @aztec/bb.js dependency"
       );
     }
     const err = validateProofInputs(body.proofInputs);
@@ -688,10 +691,11 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/healthz") {
     const circuitsReady = existsSync(path.join(CIRCUITS_DIR, "target/shielded_transfer.json"));
     const provingReady = hasProvingToolchain();
+    const mode = provingMode();
     return json(res, 200, {
       ok: Boolean(sorobanSubmitter),
       mode: sorobanSubmitter ? "sdk" : RELAYER_SECRET ? "sdk-missing" : "cli-identity",
-      proveMode: provingReady ? "cli" : "unavailable",
+      proveMode: mode,
       circuitsReady,
       provingReady,
       network: NETWORK,
