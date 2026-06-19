@@ -49,7 +49,7 @@ export function BalanceOverview({
           <h2>Shielded balances</h2>
           <p className="balance-overview__meta">
             {loading
-              ? "Scanning notes…"
+              ? "Loading token balances…"
               : ready
                 ? `${unspentCount} unspent · ${totalNotes} total notes`
                 : "Connect wallet to view balances"}

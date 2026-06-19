@@ -20,6 +20,8 @@ import {
 } from "../lib/wallet-kit";
 import { refreshShieldedWallet, type WalletRefreshMode } from "../lib/wallet-sync";
 import { BACKGROUND_POLL_MS, pickRefreshMode, scanCacheKey } from "../lib/scan-cache";
+import { scanDebug, scanDebugWarn } from "../lib/scan-debug";
+import { mergeNotes, shieldedTotal } from "../lib/note-store";
 import { useWallet } from "../hooks/use-wallet";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
@@ -29,9 +31,15 @@ function applyRefreshResult(
   cacheKey?: string
 ) {
   const state = useShieldedStore.getState();
-  state.setNotes(result.notes);
+  if (result.mode === "full") {
+    state.setNotes(result.notes);
+    state.setShieldedBalance(result.shieldedBalance);
+  } else if (result.notes.length > 0) {
+    const merged = mergeNotes(state.notes, result.notes);
+    state.setNotes(merged);
+    state.setShieldedBalance(shieldedTotal(merged));
+  }
   state.setMerkleLeaves(result.merkleLeaves);
-  state.setShieldedBalance(result.shieldedBalance);
   state.setSyncWarnings(result.warnings);
   state.setSyncError(result.warnings.length ? result.warnings.join(" · ") : null);
   if (cacheKey) {
@@ -137,13 +145,38 @@ export function useShieldedSync() {
 
   const runRefresh = useCallback(
     async (opts: { mode?: WalletRefreshMode; background?: boolean }) => {
-      if (!wallet || !viewingPub || !viewingKey || !spendingKey) return;
-      if (keyMaterialAddress && wallet !== keyMaterialAddress) return;
-      if (syncInFlight.current) return;
+      if (!wallet || !viewingPub || !viewingKey || !spendingKey) {
+        scanDebug("sync:skippedMissingKeys", {
+          wallet: Boolean(wallet),
+          viewingPub: Boolean(viewingPub),
+          viewingKey: Boolean(viewingKey),
+          spendingKey: Boolean(spendingKey),
+        });
+        return;
+      }
+      if (keyMaterialAddress && wallet !== keyMaterialAddress) {
+        scanDebugWarn("sync:skippedWalletMismatch", {
+          walletPrefix: `${wallet.slice(0, 8)}…`,
+          keyMaterialPrefix: `${keyMaterialAddress.slice(0, 8)}…`,
+        });
+        return;
+      }
+      if (opts.background && syncInFlight.current) {
+        scanDebug("sync:skippedInFlight", { background: true });
+        return;
+      }
 
       syncInFlight.current = true;
       const generation = ++syncGen.current;
       const background = opts.background ?? false;
+
+      scanDebug("sync:start", {
+        mode: opts.mode ?? "auto",
+        background,
+        generation,
+        walletPrefix: `${wallet.slice(0, 8)}…`,
+        viewingPubPrefix: `${viewingPub.slice(0, 10)}…`,
+      });
 
       if (background) {
         setScanRefreshing(true);
@@ -156,10 +189,20 @@ export function useShieldedSync() {
       try {
         const config = await loadNetworkConfig(network);
         const poolId = config.contracts.shieldedPool;
-        const cacheKey = scanCacheKey(network, poolId, viewingPub);
+        const deployLedger = config.contracts.deployLedger;
+        const cacheKey = scanCacheKey(network, poolId, viewingPub, deployLedger);
         const priorCache = useShieldedStore.getState().getScanCacheEntry(cacheKey);
-        const mode = opts.mode ?? pickRefreshMode(priorCache);
         const metadataNotes = useShieldedStore.getState().notes;
+        const mode = opts.mode ?? pickRefreshMode(priorCache, { hasNotes: metadataNotes.length > 0, deployLedger });
+
+        const derivedPub = viewingPrivToPub(BigInt(viewingKey));
+        scanDebug("sync:keyConsistency", {
+          walletEqualsKeyMaterial: wallet === keyMaterialAddress,
+          viewingKeyRecomputesToPub: derivedPub.toLowerCase() === viewingPub.toLowerCase(),
+          deployLedger: deployLedger ?? null,
+          cacheKey,
+          priorCacheLedger: priorCache?.lastScannedLedger ?? null,
+        });
 
         const result = await refreshShieldedWallet({
           network,
@@ -174,16 +217,32 @@ export function useShieldedSync() {
           onNotesReady: (notes, balance) => {
             if (generation !== syncGen.current) return;
             const state = useShieldedStore.getState();
-            state.setNotes(notes);
-            state.setShieldedBalance(balance);
+            if (mode === "full") {
+              state.setNotes(notes);
+              state.setShieldedBalance(balance);
+            } else if (notes.length > 0) {
+              const merged = mergeNotes(state.notes, notes);
+              state.setNotes(merged);
+              state.setShieldedBalance(shieldedTotal(merged));
+            }
             setScanLoading(false);
           },
         });
         if (generation !== syncGen.current) return;
         applyRefreshResult(result, cacheKey);
+        scanDebug("sync:complete", {
+          mode: result.mode,
+          noteCount: result.notes.length,
+          balance: result.shieldedBalance.toString(),
+          routeEventsScanned: result.routeEventsScanned,
+          scanStartLedger: result.scanStartLedger,
+          lastScannedLedger: result.lastScannedLedger,
+          warnings: result.warnings,
+        });
       } catch (e) {
         if (generation !== syncGen.current) return;
         const msg = e instanceof Error ? e.message : String(e);
+        scanDebugWarn("sync:error", { error: msg });
         setSyncError(msg);
       } finally {
         syncInFlight.current = false;
@@ -208,12 +267,26 @@ export function useShieldedSync() {
   );
 
   useEffect(() => {
-    if (!hydrated || !wallet || !viewingPub || !viewingKey || !spendingKey) return;
+    if (!hydrated) {
+      scanDebug("sync:waitingHydration", {});
+      return;
+    }
+    if (!wallet || !viewingPub || !viewingKey || !spendingKey) {
+      scanDebug("sync:effectSkipped", {
+        hydrated,
+        wallet: Boolean(wallet),
+        viewingPub: Boolean(viewingPub),
+        viewingKey: Boolean(viewingKey),
+        spendingKey: Boolean(spendingKey),
+      });
+      return;
+    }
     if (keyMaterialAddress && wallet !== keyMaterialAddress) {
       setSyncError("Wallet address changed — click Sync keys to re-derive shield keys for this account.");
       return;
     }
 
+    scanDebug("sync:mountFullScan", { walletPrefix: `${wallet.slice(0, 8)}…` });
     void runRefresh({ mode: "full" });
 
     const poll = window.setInterval(() => {
@@ -259,7 +332,8 @@ export async function syncShieldedWalletNow(options?: {
   try {
     const config = await loadNetworkConfig(state.network);
     const poolId = config.contracts.shieldedPool;
-    const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub);
+    const deployLedger = config.contracts.deployLedger;
+    const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub, deployLedger);
     const priorCache = state.getScanCacheEntry(cacheKey);
     const result = await refreshShieldedWallet({
       network: state.network,
@@ -270,11 +344,18 @@ export async function syncShieldedWalletNow(options?: {
       existingNotes: state.notes,
       priorScanCache: priorCache,
       routeCursor: state.routeCursor,
-      mode: options?.mode ?? "incremental",
+      mode: options?.mode ?? pickRefreshMode(priorCache, { hasNotes: state.notes.length > 0, deployLedger }),
       syncMerkle: options?.syncMerkle ?? false,
       onNotesReady: (notes, balance) => {
-        state.setNotes(notes);
-        state.setShieldedBalance(balance);
+        const syncMode = options?.mode ?? "incremental";
+        if (syncMode === "full") {
+          state.setNotes(notes);
+          state.setShieldedBalance(balance);
+        } else if (notes.length > 0) {
+          const merged = mergeNotes(state.notes, notes);
+          state.setNotes(merged);
+          state.setShieldedBalance(shieldedTotal(merged));
+        }
         state.setScanLoading(false);
       },
     });

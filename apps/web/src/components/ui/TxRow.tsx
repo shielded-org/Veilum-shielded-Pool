@@ -1,5 +1,6 @@
 import type { TransactionRecord } from "../../lib/types";
 import { IconArrowRightCircle, IconDownloadCloud, IconUploadCloud } from "./icons";
+import { ContractLink } from "./ContractLink";
 import { TxLink } from "./TxLink";
 
 type TxRowProps = {
@@ -26,13 +27,27 @@ export function TxRow({ tx }: TxRowProps) {
           <TypeIcon type={tx.type} />
         </span>
       </td>
-      <td className="tx-row__desc">{TYPE_LABEL[tx.type]}</td>
+      <td className="tx-row__desc">
+        {TYPE_LABEL[tx.type]}
+        {tx.status === "failed" && tx.detail ? (
+          <span className="tx-row__detail" title={tx.detail}>
+            {" "}
+            — {tx.detail}
+          </span>
+        ) : null}
+      </td>
       <td className="tx-row__amount">{tx.amount}</td>
       <td>
         <span className={`status-pill status-pill--${tx.status}`}>{tx.status}</span>
       </td>
       <td className="tx-row__hash">
-        {tx.txHash ? <TxLink txHash={tx.txHash} /> : "—"}
+        {tx.txHash ? (
+          <TxLink txHash={tx.txHash} />
+        ) : tx.contractId ? (
+          <ContractLink contractId={tx.contractId} label="contract" />
+        ) : (
+          "—"
+        )}
       </td>
     </tr>
   );
