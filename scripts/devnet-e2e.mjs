@@ -774,6 +774,8 @@ async function main() {
     bytes32Arg(depositRoute.channel),
     "--subchannel",
     bytes32Arg(depositRoute.subchannel),
+    "--asp_meta",
+    "00",
   ]);
 
   const onChainRoot = `0x${runCapture("stellar", [
@@ -840,7 +842,7 @@ async function main() {
     Buffer.alloc(32),
   ]);
 
-  const { proofBytes } = generateUltraHonkProofCli(CIRCUITS_DIR, {
+  const { proofBytes } = await generateUltraHonkProofCli(CIRCUITS_DIR, {
     spending_key: owner.spendingKey.toString(),
     in_amounts: [shieldAmount.toString(), "0"],
     in_blindings: [toHex32(blinding0), toHex32(0n)],
@@ -949,7 +951,7 @@ async function main() {
     taiwoBalanceBefore.toString()
   );
 
-  const { proofBytes: unshieldProofBytes } = generateUltraHonkProofCli(CIRCUITS_DIR, {
+  const { proofBytes: unshieldProofBytes } = await generateUltraHonkProofCli(CIRCUITS_DIR, {
     spending_key: taiwo.spendingKey.toString(),
     in_amounts: [recipientAmount.toString(), "0"],
     in_blindings: [toHex32(outBlinding0), toHex32(0n)],

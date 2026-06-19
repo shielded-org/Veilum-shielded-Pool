@@ -13,6 +13,9 @@ const CONTRACTS = [
   { name: "mock-token", wasm: "mock_token.wasm" },
   { name: "shielded-pool", wasm: "shielded_pool.wasm" },
   { name: "merkle-tree", wasm: "merkle_tree.wasm" },
+  { name: "asp-membership", wasm: "asp_membership.wasm" },
+  { name: "asp-deny", wasm: "asp_deny.wasm" },
+  { name: "asp-gate", wasm: "asp_gate.wasm" },
 ];
 
 function run(cmd, args) {
