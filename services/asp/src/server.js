@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,8 @@ const HORIZON_URL =
 const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Future Network ; October 2022";
 const SOURCE_ACCOUNT = process.env.ASP_SOURCE_ACCOUNT || "bevis";
+const ASP_SECRET = process.env.ASP_SECRET_KEY || null;
+const ASP_PUBLIC_KEY = process.env.ASP_PUBLIC_KEY || null;
 const ASP_MEMBERSHIP = process.env.ASP_MEMBERSHIP_CONTRACT || null;
 const ASP_DENY = process.env.ASP_DENY_CONTRACT || null;
 const AUTO_SCREEN =
@@ -85,6 +88,28 @@ const DB_PATH = path.join(DATA_DIR, "asp-registry.json");
 
 function runCapture(cmd, args) {
   return execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+}
+
+function stellarConfigDir() {
+  if (process.env.STELLAR_CONFIG_DIR) return process.env.STELLAR_CONFIG_DIR;
+  if (process.env.XDG_CONFIG_HOME) return path.join(process.env.XDG_CONFIG_HOME, "stellar");
+  return path.join(os.homedir(), ".config", "stellar");
+}
+
+function ensureAspIdentity() {
+  if (!ASP_SECRET) return;
+  const identityDir = path.join(stellarConfigDir(), "identity");
+  mkdirSync(identityDir, { recursive: true });
+  writeFileSync(
+    path.join(identityDir, `${SOURCE_ACCOUNT}.toml`),
+    `secret_key = "${ASP_SECRET}"\n`
+  );
+  if (ASP_PUBLIC_KEY) {
+    const addr = runCapture("stellar", ["keys", "address", SOURCE_ACCOUNT]);
+    if (addr !== ASP_PUBLIC_KEY) {
+      throw new Error(`ASP_PUBLIC_KEY mismatch: expected ${ASP_PUBLIC_KEY}, got ${addr}`);
+    }
+  }
 }
 
 function ensureStellarNetwork() {
@@ -269,6 +294,7 @@ function requireAdmin(req) {
   if (token !== ADMIN_TOKEN) throw new Error("Unauthorized");
 }
 
+ensureAspIdentity();
 ensureStellarNetwork();
 
 const server = http.createServer(async (req, res) => {
