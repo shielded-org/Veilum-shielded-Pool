@@ -1,0 +1,165 @@
+/* Veilum — react-toastify overrides */
+
+:root {
+  --toastify-color-dark: var(--bg-elevated);
+  --toastify-color-light: var(--bg-elevated);
+  --toastify-text-color-dark: var(--text);
+  --toastify-text-color-light: var(--text);
+  --toastify-font-family: var(--font-body);
+  --toastify-toast-width: min(380px, calc(100vw - 32px));
+  --toastify-toast-min-height: unset;
+  --toastify-toast-padding: 0;
+  --toastify-toast-bd-radius: var(--radius-md);
+  --toastify-toast-shadow: 0 12px 40px oklch(0% 0 0 / 0.45);
+  --toastify-container-width: fit-content;
+}
+
+.veilum-toast-container {
+  z-index: var(--z-toast);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  --toastify-toast-offset: 20px;
+}
+
+.veilum-toast.Toastify__toast {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--toastify-toast-shadow);
+  padding: 14px 16px;
+  overflow: hidden;
+}
+
+.veilum-toast--success {
+  border-color: oklch(72% 0.16 155 / 0.35);
+  background: linear-gradient(
+    135deg,
+    oklch(72% 0.16 155 / 0.1) 0%,
+    var(--bg-elevated) 55%
+  );
+}
+
+.veilum-toast--error {
+  border-color: oklch(62% 0.18 25 / 0.35);
+  background: linear-gradient(135deg, oklch(62% 0.18 25 / 0.1) 0%, var(--bg-elevated) 55%);
+}
+
+.veilum-toast--info {
+  border-color: oklch(78% 0.14 175 / 0.35);
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-elevated) 55%);
+}
+
+.veilum-toast--loading {
+  border-color: var(--border);
+}
+
+.veilum-toast__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.veilum-toast__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.veilum-toast__icon--success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.veilum-toast__icon--error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.veilum-toast__icon--info {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.veilum-toast__icon--loading {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.veilum-toast__content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.veilum-toast__title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.veilum-toast__detail {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.veilum-toast__tx {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+}
+
+.veilum-toast__tx-link {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.veilum-toast__tx-link:hover {
+  color: var(--accent-hover);
+}
+
+.veilum-toast .Toastify__close-button {
+  color: var(--text-subtle);
+  opacity: 1;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.veilum-toast .Toastify__close-button:hover {
+  color: var(--text);
+}
+
+.veilum-toast__progress.Toastify__progress-bar {
+  height: 2px;
+  opacity: 1;
+}
+
+.veilum-toast--success .veilum-toast__progress {
+  background: var(--success);
+}
+
+.veilum-toast--error .veilum-toast__progress {
+  background: var(--error);
+}
+
+.veilum-toast--info .veilum-toast__progress {
+  background: var(--accent);
+}
+
+.veilum-toast--loading .veilum-toast__progress {
+  background: var(--accent);
+}
+
+.veilum-toast .Toastify__toast-icon {
+  display: none;
+}
