@@ -21,10 +21,14 @@ import {
 import { Keypair } from "@stellar/stellar-sdk";
 
 import {
+  backfillMembershipsFromChain,
+  extendAspSorobanReader,
+  resolveMembershipChain,
+} from "./asp-chain.js";
+import {
   approveMember,
   denyMember,
   deriveMembershipBlinding as deriveBlinding,
-  getCanonicalMembershipChain,
   membershipStatus,
   queuePending,
   runAspScreen,
@@ -96,7 +100,7 @@ const aspSubmitter = ASP_SECRET
     })
   : null;
 
-const aspSoroban =
+const aspSorobanBase =
   ASP_MEMBERSHIP &&
   createAspSorobanReader({
     networkPassphrase: NETWORK_PASSPHRASE,
@@ -105,6 +109,15 @@ const aspSoroban =
     sourceAddress: SOURCE_ADDRESS,
     contractId: ASP_MEMBERSHIP,
   });
+
+const aspSoroban =
+  aspSorobanBase && ASP_MEMBERSHIP
+    ? extendAspSorobanReader(aspSorobanBase, {
+        contractId: ASP_MEMBERSHIP,
+        horizonUrl: HORIZON_URL,
+        sourceAddress: SOURCE_ADDRESS,
+      })
+    : null;
 
 const DB_PATH = path.join(DATA_DIR, "asp-registry.json");
 
@@ -199,6 +212,7 @@ async function invokeInsertMember(ownerPk, membershipBlinding) {
     args
   );
   await aspSubmitter.submitContractInvoke(ASP_MEMBERSHIP, "insert_member", args);
+  aspSoroban?.invalidateMembershipIndex?.();
   const aspRoot = await aspSoroban.getLastRoot();
   return { leafIndex: Number(leafIndex), aspRoot };
 }
@@ -280,6 +294,27 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && req.url === "/healthz") {
+      let onChainMembers = null;
+      let indexedMembers = null;
+      if (aspSoroban) {
+        try {
+          onChainMembers = await aspSoroban.getNextIndex();
+        } catch {
+          onChainMembers = null;
+        }
+        try {
+          const hint = onChainMembers ?? 0;
+          if (hint > 0) {
+            indexedMembers = (
+              await aspSoroban.buildMembershipChainThrough(hint - 1)
+            ).length;
+          } else {
+            indexedMembers = 0;
+          }
+        } catch {
+          indexedMembers = null;
+        }
+      }
       return json(res, 200, {
         ok: true,
         network: NETWORK,
@@ -289,6 +324,12 @@ const server = http.createServer(async (req, res) => {
         aspDeny: ASP_DENY,
         sourceAddress: SOURCE_ADDRESS,
         submitterReady: Boolean(aspSubmitter),
+        onChainMemberCount: onChainMembers,
+        indexedMemberCount: indexedMembers,
+        membershipIndexOk:
+          onChainMembers != null &&
+          indexedMembers != null &&
+          onChainMembers === indexedMembers,
       });
     }
 
@@ -425,8 +466,29 @@ const server = http.createServer(async (req, res) => {
       if (!approved) {
         return json(res, 404, { ok: false, error: "Not approved" });
       }
-      const leafIndex = approved.leafIndex ?? 0;
-      const chain = getCanonicalMembershipChain(db, ASP_MEMBERSHIP, leafIndex);
+      if (!aspSoroban) {
+        return json(res, 503, { ok: false, error: "ASP Soroban reader not configured" });
+      }
+
+      const { leafIndex, chain } = await resolveMembershipChain({
+        db,
+        aspReader: aspSoroban,
+        contractId: ASP_MEMBERSHIP,
+        ownerPk,
+        leafIndexHint: approved.leafIndex ?? 0,
+      });
+
+      if (approved.leafIndex !== leafIndex) {
+        approved.leafIndex = leafIndex;
+        const aspRootNow = await aspSoroban.getLastRoot();
+        approved.aspRoot = aspRootNow;
+        backfillMembershipsFromChain(db, ASP_MEMBERSHIP, chain, aspRootNow);
+        saveDb(db);
+      } else {
+        backfillMembershipsFromChain(db, ASP_MEMBERSHIP, chain, approved.aspRoot);
+        saveDb(db);
+      }
+
       const leafHashes = await Promise.all(
         chain.map((m) => computeAspLeafViaNoir(m.ownerPk, m.membershipBlinding))
       );
@@ -443,7 +505,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         ownerPk,
-        membershipBlinding: approved.membershipBlinding,
+        membershipBlinding:
+          approved.membershipBlinding ?? deriveMembershipBlinding(ownerPk),
         leafIndex,
         aspRoot,
         siblings: pathInfo.siblings,
@@ -459,10 +522,28 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+async function bootstrapMembershipIndex() {
+  if (!aspSoroban || !ASP_MEMBERSHIP) return;
+  try {
+    const next = await aspSoroban.getNextIndex();
+    if (next <= 0) return;
+    const chain = await aspSoroban.buildMembershipChainThrough(next - 1);
+    const db = loadDb();
+    const aspRoot = await aspSoroban.getLastRoot();
+    backfillMembershipsFromChain(db, ASP_MEMBERSHIP, chain, aspRoot);
+    saveDb(db);
+    console.log(`ASP membership index: ${chain.length} on-chain inserts backfilled into registry`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`ASP membership index backfill skipped: ${message}`);
+  }
+}
+
 server.listen(port, host, () => {
   console.log(`ASP service listening on http://${host}:${port}`);
   console.log(`Network=${NETWORK} horizon=${HORIZON_URL} autoScreen=${AUTO_SCREEN}`);
   console.log(`Membership=${ASP_MEMBERSHIP ?? "unset"} deny=${ASP_DENY ?? "unset"}`);
+  void bootstrapMembershipIndex();
 });
 
 server.on("error", (err) => {

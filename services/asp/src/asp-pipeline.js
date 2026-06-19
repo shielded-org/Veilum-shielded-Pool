@@ -61,7 +61,7 @@ export function getCanonicalMembershipChain(db, contractId, leafIndex) {
     throw new Error("Invalid ASP leaf index");
   }
 
-  const candidates = (db.memberships ?? []).filter((m) => {
+  const candidates = [...(db.memberships ?? []), ...(db.approved ?? [])].filter((m) => {
     if (m.leafIndex == null || m.leafIndex > target) return false;
     if (contractId && m.contractId && m.contractId !== contractId) return false;
     return true;

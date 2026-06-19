@@ -64,6 +64,8 @@ export function createAspSorobanReader({
   }
 
   return {
+    rpcUrls: uniqueRpcUrls,
+    simulateRead,
     async isKnownRoot(rootHex) {
       return Boolean(await simulateRead("is_known_root", [bytes32ScVal(rootHex)]));
     },
