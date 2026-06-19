@@ -8,6 +8,7 @@ import { WalletProvider } from "./components/WalletProvider";
 import "./styles/global.css";
 import "./styles/pages.css";
 import "./styles/impeccable-theme.css";
+import "./styles/mobile.css";
 import "react-toastify/dist/ReactToastify.css";
 import "./styles/toast.css";
 

@@ -30,10 +30,48 @@ export function LandingLayout() {
   }, []);
 
   return (
-    <div className="landing">
+    <div className={`landing${menuOpen ? " landing--nav-open" : ""}`}>
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
+
+      <button
+        type="button"
+        className="landing-menu-backdrop"
+        aria-label="Close menu"
+        tabIndex={menuOpen ? 0 : -1}
+        onClick={() => setMenuOpen(false)}
+      />
+
+      <div
+        id="landing-mobile-menu"
+        className={`landing-menu landing-menu--drawer${menuOpen ? " landing-menu--open" : ""}`}
+      >
+        <div className="landing-menu__head">
+          <span className="landing-menu__title">Menu</span>
+          <button
+            type="button"
+            className="landing-menu__close"
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+          >
+            <IconX size={20} />
+          </button>
+        </div>
+        <NavLink to="/" end onClick={() => setMenuOpen(false)}>
+          Home
+        </NavLink>
+        <NavLink to="/about" onClick={() => setMenuOpen(false)}>
+          About
+        </NavLink>
+        <NavLink to="/how-to-use" onClick={() => setMenuOpen(false)}>
+          How to use
+        </NavLink>
+        <Link to="/dashboard" className="btn btn-primary" onClick={() => setMenuOpen(false)}>
+          Open Dashboard
+        </Link>
+      </div>
+
       <div className="container">
         <nav className={`landing-nav${scrolled ? " landing-nav--scrolled" : ""}`} aria-label="Main">
           <Link to="/" className="landing-brand">
@@ -52,28 +90,16 @@ export function LandingLayout() {
             {menuOpen ? <IconX size={20} /> : <IconMenu size={20} />}
             <span className="sr-only">{menuOpen ? "Close menu" : "Open menu"}</span>
           </button>
-          <div id="landing-mobile-menu" className={`landing-menu${menuOpen ? " landing-menu--open" : ""}`}>
-            <NavLink to="/" end onClick={() => setMenuOpen(false)}>
+          <div className="landing-nav__links">
+            <NavLink to="/" end>
               Home
             </NavLink>
-            <NavLink to="/about" onClick={() => setMenuOpen(false)}>
-              About
-            </NavLink>
-            <NavLink to="/how-to-use" onClick={() => setMenuOpen(false)}>
-              How to use
-            </NavLink>
-            <Link to="/dashboard" className="btn btn-primary" onClick={() => setMenuOpen(false)}>
+            <NavLink to="/about">About</NavLink>
+            <NavLink to="/how-to-use">How to use</NavLink>
+            <Link to="/dashboard" className="btn btn-primary">
               Open Dashboard
             </Link>
           </div>
-          {menuOpen && (
-            <button
-              type="button"
-              className="landing-menu-backdrop"
-              aria-label="Close menu"
-              onClick={() => setMenuOpen(false)}
-            />
-          )}
         </nav>
         <main id="main-content">
           <Outlet />

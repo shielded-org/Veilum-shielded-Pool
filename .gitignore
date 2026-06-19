@@ -11,5 +11,7 @@ docs/
 .agents/
 .claude/
 
+.DS_Store
+
 DESIGN.md
 PRODUCT.md

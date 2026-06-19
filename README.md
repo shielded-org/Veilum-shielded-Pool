@@ -49,7 +49,7 @@ Stellar already moves stable value efficiently. What it lacks is a native way to
 | **Multi-asset support** | One pool custodies multiple enabled Stellar tokens; each note is bound to a specific asset via a public token field |
 | **On-chain verification** | Spend authorization is enforced by UltraHonk zero-knowledge proofs verified inside Soroban, not by trusted intermediaries |
 | **Relayer-friendly** | Private sends and unshields are submitted by a relayer so the user's wallet is not the on-chain signer |
-| **Boundary compliance** | Optional Association Set Provider (ASP) gates who may shield in and unshield out without deanonymizing internal transfers |
+| **Boundary compliance** | Association Set Provider (ASP) gates who may shield in and unshield out without deanonymizing internal transfers |
 | **Composable with Stellar** | Shield and unshield remain standard token transfers; only the private layer uses ZK |
 
 ### Target users
@@ -268,6 +268,28 @@ privacy/
 | **asp-deny** | Persistent deny map keyed by `owner_pk` |
 | **asp-gate** | Verifies 14-input ASP unshield proof + deny check + calls `pool.fulfill_unshield` |
 | **mock-token** | Mintable SAC-style token for local and devnet testing |
+
+### Deployed contracts (testnet)
+
+Canonical addresses live in `apps/web/public/deployment.json` (copied from `scripts/deployment.json` after deploy). IDs change when you redeploy; the table below matches the current testnet deployment (`network`: testnet, `deployLedger`: 3138857).
+
+| Name | Package | `deployment.json` key | Contract ID |
+|------|---------|----------------------|-------------|
+| **Shielded Pool** | `shielded-pool` | `shieldedPool` | `CBU6QJ7H2LH2IFZUNTPVBH6637JXOADXVIZTGOLIFGKJREAB6R2AY7D4` |
+| **Merkle Tree** | `merkle-tree` | `merkleTree` | `CDAAIDJKLZN5ZR7DCJXS6LWCILPIFAZFHQ7VWQ5YHN5BRXD4XO5UE7AR` |
+| **UltraHonk Verifier** (standard) | `rs-soroban-ultrahonk` | `verifier` | `CDGRAZJD57XH5KFWYDTFRMJM33UUAYV3UO7YJ4F5RIR4BXPBXAALBD65` |
+| **UltraHonk Verifier** (ASP) | `rs-soroban-ultrahonk` | `verifierAsp` | `CCRCUHVIVRLFM2MMGY3EVIE2MX2DDIFEKMPWQMAFH2KJMGPIMYW3MXQR` |
+| **ASP Membership** | `asp-membership` | `aspMembership` | `CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI` |
+| **ASP Deny** | `asp-deny` | `aspDeny` | `CAUKPALXFWJ5OCBETYILQ5FIZG5LJ5ZXA2DE2VFZJKBE4OQ5UAERDFQ7` |
+| **ASP Gate** | `asp-gate` | `aspGate` | `CC2E22YO333KAES2UD3IL2SLPQN3VBQ66MC7JHWJWKGYTBHV4XEQ35A6` |
+| **Mock USDC** | `mock-token` | `tokens.USDC` | `CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK` |
+| **Mock EURC** | `mock-token` | `tokens.EURC` | `CAPKRERUTGEPAWZ7QW6K7U5WUD5DVWVEMW43AVRCOI7WADGMY24DAIJ3` |
+| **Mock YLDS** | `mock-token` | `tokens.YLDS` | `CB4LFC4JF247V6U3SN7CTDDHMIA54PKVZUPTWDG5M7CQSS6VPPMVJUMY` |
+| **Mock MGUSD** | `mock-token` | `tokens.MGUSD` | `CBWBVC6LE4RORGJ5M4IHNPIRHEBKF7O2JIRHR3IF4IITT766PUJ7QCOK` |
+
+**Deployment flags** (same file): `aspEnforceShield: true`, `indexedRouteEvents: true`.
+
+On **local** / **futurenet**, run `npm run e2e` (and `npm run deploy:stables` for tokens) to generate fresh IDs. On **mainnet**, stablecoin rows would point at real Circle / issuer SAC contracts instead of `mock-token` deployments.
 
 External tokens are custodied in the pool. Each enabled token maps to a BN254 **token field**:
 

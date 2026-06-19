@@ -1796,10 +1796,3 @@
     width: 100%;
   }
 }
-
-@media (max-width: 768px) {
-  .landing-menu {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-  }
-}
