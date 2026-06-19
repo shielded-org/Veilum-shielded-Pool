@@ -25,6 +25,18 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
+    proxy: {
+      "/api/relayer": {
+        target: process.env.VITE_RELAYER_URL || "http://127.0.0.1:8787",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/relayer/, ""),
+      },
+      "/api/asp": {
+        target: process.env.VITE_ASP_URL || "http://127.0.0.1:8788",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/asp/, ""),
+      },
+    },
   },
   assetsInclude: ["**/*.wasm"],
 });

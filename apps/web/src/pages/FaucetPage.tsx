@@ -154,6 +154,7 @@ export function FaucetPage() {
         ...contractSuccess.mint(amount, active.symbol, balanceLabel),
         txHash: final.txHash ?? res.txHash,
       });
+      setAmount("");
       setStatus("");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -182,6 +183,7 @@ export function FaucetPage() {
         ...contractSuccess.mint(amount, active.symbol, balanceLabel),
         txHash,
       });
+      setAmount("");
       setStatus("");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

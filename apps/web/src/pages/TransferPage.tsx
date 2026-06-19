@@ -122,6 +122,8 @@ export function TransferPage() {
         ...contractSuccess.transfer(),
         txHash: result.txHash,
       });
+      setAmount("");
+      setRecipientAddress("");
       setStatus("");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

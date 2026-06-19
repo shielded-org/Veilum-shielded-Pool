@@ -95,10 +95,17 @@ export async function waitForRelayerConfirmation(
 }
 
 export async function fetchRelayerHealth(): Promise<{ ok: boolean; relayerAddress?: string }> {
-  const { relayerUrl } = await getServiceUrls();
-  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/healthz`);
-  if (!res.ok) return { ok: false };
-  return (await res.json()) as { ok: boolean; relayerAddress?: string };
+  try {
+    const { relayerUrl } = await getServiceUrls();
+    const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/healthz`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!res.ok) return { ok: false };
+    return (await res.json()) as { ok: boolean; relayerAddress?: string };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export async function requestFaucetMint(payload: {

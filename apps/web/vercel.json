@@ -4,5 +4,15 @@
   "installCommand": "cd ../.. && npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/relayer/:path*",
+      "destination": "https://veilum-shielded-pool-1.onrender.com/:path*"
+    },
+    {
+      "source": "/api/asp/:path*",
+      "destination": "https://veilum-shielded-pool.onrender.com/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

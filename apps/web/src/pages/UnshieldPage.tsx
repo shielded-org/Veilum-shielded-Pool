@@ -123,6 +123,8 @@ export function UnshieldPage() {
         ...contractSuccess.unshield(),
         txHash: result.txHash,
       });
+      setAmount("");
+      setRecipient("");
       setStatus("");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

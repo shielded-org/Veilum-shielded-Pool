@@ -140,7 +140,29 @@ export function useShieldedSync() {
   }, [hydrated]);
 
   useEffect(() => {
-    void fetchRelayerHealth().then((h) => setRelayerOk(h.ok));
+    let cancelled = false;
+
+    async function pollRelayerHealth() {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const h = await fetchRelayerHealth();
+        if (cancelled) return;
+        if (h.ok) {
+          setRelayerOk(true);
+          return;
+        }
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
+      if (!cancelled) setRelayerOk(false);
+    }
+
+    void pollRelayerHealth();
+    const interval = window.setInterval(() => void pollRelayerHealth(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [setRelayerOk]);
 
   const runRefresh = useCallback(

@@ -1,4 +1,4 @@
 {
-  "relayerUrl": "https://veilum-shielded-pool-1.onrender.com",
-  "aspUrl": "https://veilum-shielded-pool.onrender.com"
+  "relayerUrl": "/api/relayer",
+  "aspUrl": "/api/asp"
 }

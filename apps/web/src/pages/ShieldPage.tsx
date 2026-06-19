@@ -188,6 +188,7 @@ export function ShieldPage() {
         ...contractSuccess.shield(amount, selected),
         txHash: result.txHash,
       });
+      setAmount("");
       setStatus("");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

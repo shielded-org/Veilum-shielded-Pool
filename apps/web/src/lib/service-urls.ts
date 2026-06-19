@@ -1,6 +1,10 @@
 const LOCAL_RELAYER = "http://127.0.0.1:8787";
 const LOCAL_ASP = "http://127.0.0.1:8788";
 
+/** Same-origin paths — proxied in Vite dev and Vercel prod (avoids Brave cross-site blocking). */
+export const PROXY_RELAYER_URL = "/api/relayer";
+export const PROXY_ASP_URL = "/api/asp";
+
 export type ServiceUrls = {
   relayerUrl: string;
   aspUrl: string;
@@ -12,31 +16,34 @@ function envUrl(key: "VITE_RELAYER_URL" | "VITE_ASP_URL"): string {
   return (import.meta.env[key] as string | undefined)?.trim() ?? "";
 }
 
-function isUnset(url: string, localDefault: string): boolean {
-  return !url || url === localDefault;
+function isLocalDevHost(): boolean {
+  if (typeof window === "undefined") return import.meta.env.DEV;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
 }
 
-/** Resolve relayer + ASP base URLs (Vite env, then /config/services.json fallback). */
+/** Resolve relayer + ASP base URLs. Production uses same-origin proxy; local dev uses env or localhost. */
 export async function getServiceUrls(): Promise<ServiceUrls> {
   if (resolved) return resolved;
+
+  if (!isLocalDevHost()) {
+    resolved = { relayerUrl: PROXY_RELAYER_URL, aspUrl: PROXY_ASP_URL };
+    return resolved;
+  }
 
   let relayerUrl = envUrl("VITE_RELAYER_URL");
   let aspUrl = envUrl("VITE_ASP_URL");
 
-  if (isUnset(relayerUrl, LOCAL_RELAYER) || isUnset(aspUrl, LOCAL_ASP)) {
+  if (!relayerUrl || !aspUrl) {
     try {
       const res = await fetch("/config/services.json", { cache: "no-store" });
       if (res.ok) {
         const cfg = (await res.json()) as Partial<ServiceUrls>;
-        if (isUnset(relayerUrl, LOCAL_RELAYER) && cfg.relayerUrl?.trim()) {
-          relayerUrl = cfg.relayerUrl.trim();
-        }
-        if (isUnset(aspUrl, LOCAL_ASP) && cfg.aspUrl?.trim()) {
-          aspUrl = cfg.aspUrl.trim();
-        }
+        if (!relayerUrl && cfg.relayerUrl?.trim()) relayerUrl = cfg.relayerUrl.trim();
+        if (!aspUrl && cfg.aspUrl?.trim()) aspUrl = cfg.aspUrl.trim();
       }
     } catch {
-      // local dev without services.json
+      // optional local override file
     }
   }
 
