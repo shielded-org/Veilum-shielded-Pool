@@ -34,7 +34,7 @@ export function OnboardingWizard() {
         <div className="onboarding-progress" aria-label={`${completedCount} of ${totalSteps} steps complete`}>
           <div
             className="onboarding-progress__fill"
-            style={{ width: `${(completedCount / totalSteps) * 100}%` }}
+            style={{ ["--onboarding-progress" as string]: completedCount / totalSteps }}
           />
         </div>
 
