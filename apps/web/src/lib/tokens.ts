@@ -4,11 +4,14 @@ import { createRpc, getTokenDecimals, getTokenField } from "./soroban";
 
 export type StableSymbol = "USDC" | "EURC" | "YLDS" | "MGUSD";
 
+export type StableCurrency = "USD" | "EUR";
+
 export type StableTokenMeta = {
   symbol: StableSymbol;
   name: string;
   description: string;
   decimals: number;
+  currency: StableCurrency;
 };
 
 export const STABLE_CATALOG: Record<StableSymbol, StableTokenMeta> = {
@@ -17,26 +20,44 @@ export const STABLE_CATALOG: Record<StableSymbol, StableTokenMeta> = {
     name: "USD Coin",
     description: "Circle's flagship USD stablecoin (mock testnet)",
     decimals: 7,
+    currency: "USD",
   },
   EURC: {
     symbol: "EURC",
     name: "Euro Coin",
     description: "Circle's euro-pegged stablecoin (mock testnet)",
     decimals: 7,
+    currency: "EUR",
   },
   YLDS: {
     symbol: "YLDS",
     name: "Figure YLDS",
     description: "Regulated yield-bearing dollar (mock testnet)",
     decimals: 7,
+    currency: "USD",
   },
   MGUSD: {
     symbol: "MGUSD",
     name: "MoneyGram USD",
     description: "MoneyGram USD-backed stablecoin (mock testnet)",
     decimals: 7,
+    currency: "USD",
   },
 };
+
+export function stableCurrencyForSymbol(symbol: string): StableCurrency {
+  if (symbol in STABLE_CATALOG) {
+    return STABLE_CATALOG[symbol as StableSymbol].currency;
+  }
+  return "USD";
+}
+
+export function stableDenominationSymbol(symbol: string): string {
+  return stableCurrencyForSymbol(symbol) === "EUR" ? "€" : "$";
+}
+
+/** Single locale so thousands grouping is consistent ($1,000 vs €1,000, not de-DE 1.000). */
+export const STABLE_AMOUNT_LOCALE = "en-US";
 
 export type ListedStable = StableTokenMeta & { contractId: string };
 
