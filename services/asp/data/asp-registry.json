@@ -1,0 +1,253 @@
+{
+  "pending": [],
+  "approved": [
+    {
+      "ownerPk": "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a",
+      "membershipBlinding": "0x12f37ff8644c66bd93c7a6e5bb989b8dbc51e1aa3a70f4ddc20c359cf9f7f4d4",
+      "leafIndex": 0,
+      "aspRoot": "0x037f1c292d1939cadd4c2d7ec42ccdc021ad4a7e0d6f1a0bd8a23b14379151db",
+      "approvedAt": "2026-06-17T12:25:31.906Z"
+    },
+    {
+      "ownerPk": "0x218c45aad0845268ebebc877bc708f943d328e87aed983076d5a8387789d3b74",
+      "membershipBlinding": "0x2f9461a7eda19fd2bd953fd150e896fe330e7df814c8129fdb8acd5e0fedd350",
+      "leafIndex": 0,
+      "aspRoot": "0x07ebde5abb53c81ba5c7e079dc181f775b6815f7d2693884aaee670f4de04615",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-17T17:11:59.010Z",
+      "stellarAddress": "GC5QOPGD536F3M5PASQCMZUG7IGA2ARFE4KB46FAOKXZKHGOUPTMXP7W",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "8827f9a3aa17a3c14a4b2b5b09394648f66c6409a062e1fb2859bd369726e35d",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GC5QOPGD536F3M5PASQCMZUG7IGA2ARFE4KB46FAOKXZKHGOUPTMXP7W",
+        "scannedAt": "2026-06-17T17:11:46.620Z"
+      },
+      "screenedAt": "2026-06-17T17:11:46.620Z"
+    },
+    {
+      "ownerPk": "0x1262673ef603758898132eb4e24934f6536edeb2936b8a7ce80208a1836ec454",
+      "membershipBlinding": "0x0bcf2e206bd85cf9a48ae1f433b98f8cb2b6dc8aa5818895c2ff5690a9fc7087",
+      "leafIndex": 1,
+      "aspRoot": "0x12d2e1ca7a47ec1fbcb5faee55bb39b9bb392e0f33265c4a3066d46f19be1d54",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-17T18:04:52.058Z",
+      "stellarAddress": "GDNWATDJXOJAURPMJS4UUC6UZTWGOYIEDJQZ7SMUGTGRAS6EWRSJHX3E",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "118e3922b6ccccb4c48a5c41bea0278b4fa403290abc066591f2e6981bf3ddf9",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GDNWATDJXOJAURPMJS4UUC6UZTWGOYIEDJQZ7SMUGTGRAS6EWRSJHX3E",
+        "scannedAt": "2026-06-17T18:04:35.825Z"
+      },
+      "screenedAt": "2026-06-17T18:04:35.825Z"
+    },
+    {
+      "ownerPk": "0x28d2a3bcb6d601e93e84812a256dbd3a22f8cc6f4d02998a54eb0fa0b910a150",
+      "membershipBlinding": "0x1e6e874350042524ec4453dfee327d233b257bba648484e35d4c9e53ed8bd85a",
+      "leafIndex": 3,
+      "aspRoot": "0x00c8679d116aea9de61a3f93ec2177a9bb659468883fc04c704ddd87ba2abebc",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-18T13:00:00.000Z"
+    },
+    {
+      "ownerPk": "0x08ca5433e68275f214cbe91ebe7e77a05c7e4a5dfeed3c93c153fee180e60a16",
+      "membershipBlinding": "0x25e6b020b97b09766050822dacaa2b4aa46ce6e42d9851430b56ff5d14a815c8",
+      "leafIndex": 5,
+      "aspRoot": "0x0505ada73b2d3320cf33b86bec5fd3ada00044a75d966fe7a67c9076eb63218c",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-18T18:41:58.597Z",
+      "stellarAddress": "GDCTJ2I55GPSWSJP55UNUIGXVTWWA25TVIQRZTT627OYFOEOZDKTTXQL",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "e335448250d520b80d011bace370205c8b42b655c41f81660a84cf4c15fe4234",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GDCTJ2I55GPSWSJP55UNUIGXVTWWA25TVIQRZTT627OYFOEOZDKTTXQL",
+        "scannedAt": "2026-06-18T18:41:49.175Z"
+      },
+      "screenedAt": "2026-06-18T18:41:49.175Z"
+    }
+  ],
+  "denied": [
+    {
+      "ownerPk": "0x0657aaa7c4a89a7883d2ef37243efc3ee920f506c1e9915088ae349535bf063e",
+      "deniedAt": "2026-06-17T12:27:40.508Z"
+    }
+  ],
+  "memberships": [
+    {
+      "ownerPk": "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a",
+      "membershipBlinding": "0x12f37ff8644c66bd93c7a6e5bb989b8dbc51e1aa3a70f4ddc20c359cf9f7f4d4",
+      "leafIndex": 0,
+      "aspRoot": "0x037f1c292d1939cadd4c2d7ec42ccdc021ad4a7e0d6f1a0bd8a23b14379151db",
+      "approvedAt": "2026-06-17T12:09:03.346Z"
+    },
+    {
+      "ownerPk": "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a",
+      "membershipBlinding": "0x12f37ff8644c66bd93c7a6e5bb989b8dbc51e1aa3a70f4ddc20c359cf9f7f4d4",
+      "leafIndex": 0,
+      "aspRoot": "0x037f1c292d1939cadd4c2d7ec42ccdc021ad4a7e0d6f1a0bd8a23b14379151db",
+      "approvedAt": "2026-06-17T12:13:54.632Z"
+    },
+    {
+      "ownerPk": "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a",
+      "membershipBlinding": "0x12f37ff8644c66bd93c7a6e5bb989b8dbc51e1aa3a70f4ddc20c359cf9f7f4d4",
+      "leafIndex": 0,
+      "aspRoot": "0x037f1c292d1939cadd4c2d7ec42ccdc021ad4a7e0d6f1a0bd8a23b14379151db",
+      "approvedAt": "2026-06-17T12:20:38.951Z"
+    },
+    {
+      "ownerPk": "0x0657aaa7c4a89a7883d2ef37243efc3ee920f506c1e9915088ae349535bf063e",
+      "membershipBlinding": "0x286be34ef2f0ce8edfc71cce33f9c7b8aa0e1703c4a81249abd11593e5aa5604",
+      "leafIndex": 1,
+      "aspRoot": "0x2fca25f88150157ca176c877369aa466b65295ba79c7e1fa896962d37cd3a882",
+      "approvedAt": "2026-06-17T12:22:20.362Z"
+    },
+    {
+      "ownerPk": "0x1a53075d03343612ea2c9fdc6479929aeab661f07b7fbf418b85fece236ca43a",
+      "membershipBlinding": "0x12f37ff8644c66bd93c7a6e5bb989b8dbc51e1aa3a70f4ddc20c359cf9f7f4d4",
+      "leafIndex": 0,
+      "aspRoot": "0x037f1c292d1939cadd4c2d7ec42ccdc021ad4a7e0d6f1a0bd8a23b14379151db",
+      "approvedAt": "2026-06-17T12:25:31.906Z"
+    },
+    {
+      "ownerPk": "0x0657aaa7c4a89a7883d2ef37243efc3ee920f506c1e9915088ae349535bf063e",
+      "membershipBlinding": "0x286be34ef2f0ce8edfc71cce33f9c7b8aa0e1703c4a81249abd11593e5aa5604",
+      "leafIndex": 1,
+      "aspRoot": "0x2fca25f88150157ca176c877369aa466b65295ba79c7e1fa896962d37cd3a882",
+      "approvedAt": "2026-06-17T12:27:16.344Z"
+    },
+    {
+      "ownerPk": "0x218c45aad0845268ebebc877bc708f943d328e87aed983076d5a8387789d3b74",
+      "membershipBlinding": "0x2f9461a7eda19fd2bd953fd150e896fe330e7df814c8129fdb8acd5e0fedd350",
+      "leafIndex": 0,
+      "aspRoot": "0x07ebde5abb53c81ba5c7e079dc181f775b6815f7d2693884aaee670f4de04615",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-17T17:11:59.010Z",
+      "stellarAddress": "GC5QOPGD536F3M5PASQCMZUG7IGA2ARFE4KB46FAOKXZKHGOUPTMXP7W",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "8827f9a3aa17a3c14a4b2b5b09394648f66c6409a062e1fb2859bd369726e35d",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GC5QOPGD536F3M5PASQCMZUG7IGA2ARFE4KB46FAOKXZKHGOUPTMXP7W",
+        "scannedAt": "2026-06-17T17:11:46.620Z"
+      },
+      "screenedAt": "2026-06-17T17:11:46.620Z"
+    },
+    {
+      "ownerPk": "0x1262673ef603758898132eb4e24934f6536edeb2936b8a7ce80208a1836ec454",
+      "membershipBlinding": "0x0bcf2e206bd85cf9a48ae1f433b98f8cb2b6dc8aa5818895c2ff5690a9fc7087",
+      "leafIndex": 1,
+      "aspRoot": "0x12d2e1ca7a47ec1fbcb5faee55bb39b9bb392e0f33265c4a3066d46f19be1d54",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-17T18:04:52.058Z",
+      "stellarAddress": "GDNWATDJXOJAURPMJS4UUC6UZTWGOYIEDJQZ7SMUGTGRAS6EWRSJHX3E",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "118e3922b6ccccb4c48a5c41bea0278b4fa403290abc066591f2e6981bf3ddf9",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GDNWATDJXOJAURPMJS4UUC6UZTWGOYIEDJQZ7SMUGTGRAS6EWRSJHX3E",
+        "scannedAt": "2026-06-17T18:04:35.825Z"
+      },
+      "screenedAt": "2026-06-17T18:04:35.825Z"
+    },
+    {
+      "ownerPk": "0x1262673ef603758898132eb4e24934f6536edeb2936b8a7ce80208a1836ec454",
+      "membershipBlinding": "0x0bcf2e206bd85cf9a48ae1f433b98f8cb2b6dc8aa5818895c2ff5690a9fc7087",
+      "leafIndex": 2,
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-17T18:05:00.000Z"
+    },
+    {
+      "ownerPk": "0x28d2a3bcb6d601e93e84812a256dbd3a22f8cc6f4d02998a54eb0fa0b910a150",
+      "membershipBlinding": "0x1e6e874350042524ec4453dfee327d233b257bba648484e35d4c9e53ed8bd85a",
+      "leafIndex": 3,
+      "aspRoot": "0x00c8679d116aea9de61a3f93ec2177a9bb659468883fc04c704ddd87ba2abebc",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-18T13:00:00.000Z"
+    },
+    {
+      "ownerPk": "0x08ca5433e68275f214cbe91ebe7e77a05c7e4a5dfeed3c93c153fee180e60a16",
+      "membershipBlinding": "0x25e6b020b97b09766050822dacaa2b4aa46ce6e42d9851430b56ff5d14a815c8",
+      "leafIndex": 5,
+      "aspRoot": "0x0505ada73b2d3320cf33b86bec5fd3ada00044a75d966fe7a67c9076eb63218c",
+      "contractId": "CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI",
+      "approvedAt": "2026-06-18T18:41:58.597Z",
+      "stellarAddress": "GDCTJ2I55GPSWSJP55UNUIGXVTWWA25TVIQRZTT627OYFOEOZDKTTXQL",
+      "lastScan": {
+        "clean": true,
+        "reasons": [],
+        "inboundSources": [
+          {
+            "address": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+            "reason": "create_account_funder",
+            "txHash": "e335448250d520b80d011bace370205c8b42b655c41f81660a84cf4c15fe4234",
+            "hits": 2
+          }
+        ],
+        "inboundCount": 1,
+        "hopDepth": 1,
+        "scanLimit": 80,
+        "tokenContractId": "CBULS57QC5XGP7Z2AKCUVUFCTEYPKJF5AMBRIIZD6W6XKQHHGCOYCOFK",
+        "stellarAddress": "GDCTJ2I55GPSWSJP55UNUIGXVTWWA25TVIQRZTT627OYFOEOZDKTTXQL",
+        "scannedAt": "2026-06-18T18:41:49.175Z"
+      },
+      "screenedAt": "2026-06-18T18:41:49.175Z"
+    }
+  ]
+}

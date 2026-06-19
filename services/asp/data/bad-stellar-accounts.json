@@ -1,0 +1,4 @@
+{
+  "accounts": [],
+  "_comment": "Stellar G... or C... addresses flagged as bad fund sources. Matched against inbound payments and contract invoke initiators."
+}
