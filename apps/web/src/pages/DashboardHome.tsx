@@ -33,7 +33,7 @@ function sortNewestFirst<T extends { createdAt?: string }>(items: T[]): T[] {
 }
 
 export function DashboardHome() {
-  const { wallet, busy, connect } = useWalletConnection();
+  const { wallet, busy, error, connect } = useWalletConnection();
   const reveal = useShieldedStore((s) => s.revealBalances);
   const setReveal = useShieldedStore((s) => s.setRevealBalances);
   const relayerOk = useShieldedStore((s) => s.relayerOk);
@@ -71,7 +71,7 @@ export function DashboardHome() {
   }
 
   if (!wallet) {
-    return <DashboardConnectScreen busy={busy} onConnect={() => void connect()} />;
+    return <DashboardConnectScreen busy={busy} error={error} onConnect={() => void connect()} />;
   }
 
   return (

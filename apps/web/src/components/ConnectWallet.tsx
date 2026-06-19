@@ -9,6 +9,7 @@ import { scanDebug, scanDebugWarn } from "../lib/scan-debug";
 import { mergeNotes, shieldedTotal } from "../lib/note-store";
 import { refreshShieldedWallet, type WalletRefreshMode } from "../lib/wallet-sync";
 import { useWalletConnection } from "../hooks/use-wallet-connection";
+import { formatWalletError } from "../lib/wallet-kit";
 import { useWallet } from "../hooks/use-wallet";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { WalletConnectButton } from "./ui/WalletConnectButton";
@@ -180,7 +181,7 @@ export function useShieldedSync() {
         });
       } catch (e) {
         if (generation !== syncGen.current) return;
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = formatWalletError(e);
         scanDebugWarn("sync:error", { error: msg });
         setSyncError(msg);
       } finally {

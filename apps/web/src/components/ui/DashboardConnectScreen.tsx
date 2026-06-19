@@ -1,11 +1,14 @@
 import { IconSpinner } from "./icons";
+import { isMobileWalletDevice } from "../../lib/wallet-kit";
 
 type DashboardConnectScreenProps = {
   busy: boolean;
   onConnect: () => void;
+  error?: string | null;
 };
 
-export function DashboardConnectScreen({ busy, onConnect }: DashboardConnectScreenProps) {
+export function DashboardConnectScreen({ busy, onConnect, error }: DashboardConnectScreenProps) {
+  const mobile = isMobileWalletDevice();
   return (
     <div className="dashboard-connect-screen">
       <div className="dashboard-connect-screen__card">
@@ -36,6 +39,12 @@ export function DashboardConnectScreen({ busy, onConnect }: DashboardConnectScre
           Sign in with Freighter, xBull, Albedo, or Lobstr to derive shield keys, view your private
           balance, and use the pool.
         </p>
+        {mobile ? (
+          <p className="dashboard-connect-screen__hint">
+            On mobile, open this site in the <strong>xBull</strong> or <strong>Albedo</strong> in-app
+            browser for reliable transaction signing.
+          </p>
+        ) : null}
         <button
           type="button"
           className="btn btn-primary btn-lg"
@@ -50,6 +59,9 @@ export function DashboardConnectScreen({ busy, onConnect }: DashboardConnectScre
             "Connect Wallet"
           )}
         </button>
+        {error ? (
+          <p className="badge err dashboard-connect-screen__error">{error}</p>
+        ) : null}
         <p className="dashboard-connect-screen__hint">
           You can also use the wallet button in the top right.
         </p>

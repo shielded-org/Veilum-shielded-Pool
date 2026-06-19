@@ -3,10 +3,18 @@ import {
   Networks,
   KitEventType,
 } from "@creit.tech/stellar-wallets-kit";
-import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
+import albedoImport from "@albedo-link/intent";
 
 import { applyLocalWalletIcons } from "./wallet-icons";
+import {
+  ALBEDO_ID,
+  createWalletModules,
+  isMobileWalletDevice,
+} from "./wallet-modules";
+import { formatWalletError, isUnsupportedNetworkQueryError } from "./wallet-error";
 import type { NetworkConfig, NetworkName } from "./types";
+
+const albedo = albedoImport.default;
 
 let initialized = false;
 
@@ -40,7 +48,7 @@ export function initWalletKit(network: NetworkName = "testnet"): void {
   if (!initialized) {
     StellarWalletsKit.init({
       network: kitNetwork,
-      modules: applyLocalWalletIcons(defaultModules()),
+      modules: applyLocalWalletIcons(createWalletModules()),
     });
     initialized = true;
     return;
@@ -50,7 +58,7 @@ export function initWalletKit(network: NetworkName = "testnet"): void {
 
 export async function connectWallet(): Promise<string> {
   const { address } = await StellarWalletsKit.authModal();
-  if (!address) throw new Error("No wallet address returned");
+  if (!address || typeof address !== "string") throw new Error("No wallet address returned");
   return address;
 }
 
@@ -69,12 +77,37 @@ export async function signWalletMessage(message: string, address: string): Promi
   return result.signedMessage;
 }
 
+/**
+ * Freighter supports getNetwork(); Albedo/xBull/Lobstr do not — skip instead of failing connect.
+ */
 export async function ensureWalletNetwork(config: NetworkConfig): Promise<void> {
-  const net = await StellarWalletsKit.getNetwork();
-  if (net.networkPassphrase !== config.networkPassphrase) {
-    throw new Error(
-      `Wallet network mismatch. Switch your wallet to match ${config.networkPassphrase.split(";")[0].trim()}`
-    );
+  try {
+    const net = await StellarWalletsKit.getNetwork();
+    if (net.networkPassphrase !== config.networkPassphrase) {
+      throw new Error(
+        `Wallet network mismatch. Switch your wallet to match ${config.networkPassphrase.split(";")[0].trim()}`
+      );
+    }
+  } catch (error) {
+    if (isUnsupportedNetworkQueryError(error)) return;
+    throw error;
+  }
+}
+
+/**
+ * On mobile Albedo, grant implicit tx/sign_message permissions during connect so later
+ * shield approvals can use iframe transport instead of blocked popups.
+ */
+export async function grantMobileWalletSigningSession(address: string): Promise<void> {
+  if (!isMobileWalletDevice()) return;
+  if (StellarWalletsKit.selectedModule?.productId !== ALBEDO_ID) return;
+  try {
+    await albedo.implicitFlow({
+      intents: ["tx", "sign_message"],
+      pubkey: address,
+    });
+  } catch {
+    /* optional — signing may still work via dialog */
   }
 }
 
@@ -85,8 +118,15 @@ export function walletKitSigners(networkPassphrase: string) {
       return { signedTxXdr: signed.signedTxXdr };
     },
     signAuthEntry: async (preimage: string) => {
-      const signed = await StellarWalletsKit.signAuthEntry(preimage, { networkPassphrase });
-      return { signedAuthEntry: signed.signedAuthEntry };
+      try {
+        const signed = await StellarWalletsKit.signAuthEntry(preimage, { networkPassphrase });
+        return { signedAuthEntry: signed.signedAuthEntry };
+      } catch (error) {
+        if (formatWalletError(error).toLowerCase().includes("signauthentry")) {
+          throw new Error("This wallet cannot sign token approvals — use Freighter on desktop");
+        }
+        throw error;
+      }
     },
   };
 }
@@ -102,3 +142,6 @@ export async function disconnectWalletKit(): Promise<void> {
 export function onWalletKitDisconnect(callback: () => void): () => void {
   return StellarWalletsKit.on(KitEventType.DISCONNECT, callback);
 }
+
+export { formatWalletError } from "./wallet-error";
+export { isMobileWalletDevice, isXBullInAppBrowser } from "./wallet-modules";

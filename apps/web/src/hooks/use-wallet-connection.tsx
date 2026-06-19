@@ -12,6 +12,8 @@ import {
   connectWallet,
   disconnectWalletKit,
   ensureWalletNetwork,
+  formatWalletError,
+  grantMobileWalletSigningSession,
   initWalletKit,
   signWalletMessage,
 } from "../lib/wallet-kit";
@@ -65,8 +67,10 @@ export function WalletConnectionProvider({ children }: { children: ReactNode }) 
         });
         await syncShieldedWalletNow({ mode: "full" });
       }
+
+      await grantMobileWalletSigningSession(address);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatWalletError(e));
     } finally {
       setBusy(false);
     }

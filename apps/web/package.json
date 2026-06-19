@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@albedo-link/intent": "^0.12.0",
     "@aztec/bb.js": "0.87.0",
     "@creit.tech/stellar-wallets-kit": "^2.3.0",
     "@noble/hashes": "^1.8.0",
