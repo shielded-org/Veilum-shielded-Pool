@@ -1,7 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
 
 import { DashboardLayout } from "./components/DashboardLayout";
 import { LandingLayout } from "./components/LandingLayout";
+import { AspAdminPage } from "./pages/AspAdminPage";
 import { AboutPage } from "./pages/AboutPage";
 import { DashboardHome } from "./pages/DashboardHome";
 import { FaucetPage } from "./pages/FaucetPage";
@@ -16,6 +18,15 @@ import { UnshieldPage } from "./pages/UnshieldPage";
 export function App() {
   return (
     <BrowserRouter>
+      <ToastContainer
+        position="bottom-right"
+        autoClose={6000}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss
+        theme="colored"
+        className="veilum-toast-container"
+      />
       <Routes>
         <Route element={<LandingLayout />}>
           <Route index element={<LandingPage />} />
@@ -31,6 +42,7 @@ export function App() {
           <Route path="withdraw" element={<Navigate to="/dashboard/unshield" replace />} />
           <Route path="notes" element={<NotesPage />} />
           <Route path="keys" element={<KeysPage />} />
+          <Route path="asp" element={<AspAdminPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

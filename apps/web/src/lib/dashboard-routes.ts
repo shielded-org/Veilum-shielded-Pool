@@ -6,6 +6,7 @@ import {
   IconHome,
   IconKey,
   IconList,
+  IconLock,
   IconUploadCloud,
   IconDownloadCloud,
 } from "../components/ui/icons";
@@ -59,6 +60,10 @@ export const DASHBOARD_PAGE_META: Record<string, DashboardPageMeta> = {
     title: "Keys",
     description: "Receive address and key material for private payments",
   },
+  "/dashboard/asp": {
+    title: "ASP Admin",
+    description: "Approve or deny Association Set membership",
+  },
 };
 
 export function dashboardNavGroups(isTestnet: boolean): DashboardNavGroup[] {
@@ -78,10 +83,13 @@ export function dashboardNavGroups(isTestnet: boolean): DashboardNavGroup[] {
   ];
 
   if (isTestnet) {
-    groups.push({
-      label: "Testnet",
-      items: [{ to: "/dashboard/faucet", label: "Faucet", icon: IconDroplet, testnetOnly: true }],
-    });
+  groups.push({
+    label: "Testnet",
+    items: [
+      { to: "/dashboard/faucet", label: "Faucet", icon: IconDroplet, testnetOnly: true },
+      { to: "/dashboard/asp", label: "ASP Admin", icon: IconLock, testnetOnly: true },
+    ],
+  });
   }
 
   groups.push({
