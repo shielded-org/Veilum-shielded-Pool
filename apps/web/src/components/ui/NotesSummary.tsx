@@ -13,11 +13,11 @@ export function NotesSummary({ total, unspent, spent, loading }: NotesSummaryPro
         <strong>{loading ? "…" : total}</strong>
       </div>
       <div className="notes-summary__item notes-summary__item--ok">
-        <span className="notes-summary__label">Unspent</span>
+        <span className="notes-summary__label">Available</span>
         <strong>{loading ? "…" : unspent}</strong>
       </div>
       <div className="notes-summary__item notes-summary__item--muted">
-        <span className="notes-summary__label">Spent</span>
+        <span className="notes-summary__label">Used</span>
         <strong>{loading ? "…" : spent}</strong>
       </div>
     </div>
