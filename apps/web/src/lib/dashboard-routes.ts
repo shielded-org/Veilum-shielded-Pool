@@ -6,7 +6,6 @@ import {
   IconHome,
   IconKey,
   IconList,
-  IconLock,
   IconUploadCloud,
   IconDownloadCloud,
 } from "../components/ui/icons";
@@ -87,7 +86,6 @@ export function dashboardNavGroups(isTestnet: boolean): DashboardNavGroup[] {
     label: "Testnet",
     items: [
       { to: "/dashboard/faucet", label: "Faucet", icon: IconDroplet, testnetOnly: true },
-      { to: "/dashboard/asp", label: "ASP Admin", icon: IconLock, testnetOnly: true },
     ],
   });
   }
