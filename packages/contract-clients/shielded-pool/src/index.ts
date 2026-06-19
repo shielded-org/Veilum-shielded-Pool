@@ -47,10 +47,12 @@ export const Errors = {
   11: {message:"VerificationFailed"},
   12: {message:"NotOwner"},
   13: {message:"TokenNotEnabled"},
-  14: {message:"TokenTransferFailed"}
+  14: {message:"TokenTransferFailed"},
+  15: {message:"AspMembershipInvalid"},
+  16: {message:"NotAspGate"}
 }
 
-export type DataKey = {tag: "Owner", values: void} | {tag: "Verifier", values: void} | {tag: "MerkleTree", values: void} | {tag: "EnabledToken", values: readonly [string]} | {tag: "TokenFieldFor", values: readonly [string]} | {tag: "TokenByField", values: readonly [Buffer]} | {tag: "Nullifier", values: readonly [Buffer]};
+export type DataKey = {tag: "Owner", values: void} | {tag: "Verifier", values: void} | {tag: "MerkleTree", values: void} | {tag: "AspMembership", values: void} | {tag: "AspDeny", values: void} | {tag: "VerifierAsp", values: void} | {tag: "AspEnforceShield", values: void} | {tag: "AspGate", values: void} | {tag: "EnabledToken", values: readonly [string]} | {tag: "TokenFieldFor", values: readonly [string]} | {tag: "TokenByField", values: readonly [Buffer]} | {tag: "Nullifier", values: readonly [Buffer]};
 
 
 export interface RoutedNote {
@@ -101,9 +103,29 @@ export interface Client {
   }) => Promise<AssembledTransaction<Buffer>>
 
   /**
+   * Construct and simulate a configure_asp transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  configure_asp: ({asp_membership, asp_deny, verifier_asp, asp_gate, enforce_shield}: {asp_membership: string, asp_deny: string, verifier_asp: string, asp_gate: string, enforce_shield: boolean}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
    * Construct and simulate a shield_routed transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  shield_routed: ({caller, token, amount, commitment, encrypted_note, channel, subchannel}: {caller: string, token: string, amount: i128, commitment: Buffer, encrypted_note: Buffer, channel: Buffer, subchannel: Buffer}, options?: {
+  shield_routed: ({caller, token, amount, commitment, encrypted_note, channel, subchannel, asp_meta}: {caller: string, token: string, amount: i128, commitment: Buffer, encrypted_note: Buffer, channel: Buffer, subchannel: Buffer, asp_meta: Buffer}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -139,6 +161,26 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<boolean>>
+
+  /**
+   * Construct and simulate a fulfill_unshield transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  fulfill_unshield: ({gate, nullifier, token, recipient, amount, merkle_root, new_commitment, encrypted_note, channel, subchannel}: {gate: string, nullifier: Buffer, token: string, recipient: string, amount: u128, merkle_root: Buffer, new_commitment: Buffer, encrypted_note: Buffer, channel: Buffer, subchannel: Buffer}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a set_token_enabled transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -200,14 +242,16 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAADgAAAAAAAAALSW52YWxpZFJvb3QAAAAAAQAAAAAAAAAMSW52YWxpZFByb29mAAAAAgAAAAAAAAARSW52YWxpZFRva2VuRmllbGQAAAAAAAADAAAAAAAAAAxJbnZhbGlkVG9rZW4AAAAEAAAAAAAAABBJbnZhbGlkUmVjaXBpZW50AAAABQAAAAAAAAANSW52YWxpZEFtb3VudAAAAAAAAAYAAAAAAAAAEUludmFsaWRDb21taXRtZW50AAAAAAAABwAAAAAAAAAQSW52YWxpZE51bGxpZmllcgAAAAgAAAAAAAAAE0R1cGxpY2F0ZU51bGxpZmllcnMAAAAACQAAAAAAAAAVTnVsbGlmaWVyQWxyZWFkeVNwZW50AAAAAAAACgAAAAAAAAASVmVyaWZpY2F0aW9uRmFpbGVkAAAAAAALAAAAAAAAAAhOb3RPd25lcgAAAAwAAAAAAAAAD1Rva2VuTm90RW5hYmxlZAAAAAANAAAAAAAAABNUb2tlblRyYW5zZmVyRmFpbGVkAAAAAA4=",
-        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABwAAAAAAAAAAAAAABU93bmVyAAAAAAAAAAAAAAAAAAAIVmVyaWZpZXIAAAAAAAAAAAAAAApNZXJrbGVUcmVlAAAAAAABAAAAAAAAAAxFbmFibGVkVG9rZW4AAAABAAAAEwAAAAEAAAAAAAAADVRva2VuRmllbGRGb3IAAAAAAAABAAAAEwAAAAEAAAAAAAAADFRva2VuQnlGaWVsZAAAAAEAAAPuAAAAIAAAAAEAAAAAAAAACU51bGxpZmllcgAAAAAAAAEAAAPuAAAAIA==",
+      new ContractSpec([ "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAAEAAAAAAAAAALSW52YWxpZFJvb3QAAAAAAQAAAAAAAAAMSW52YWxpZFByb29mAAAAAgAAAAAAAAARSW52YWxpZFRva2VuRmllbGQAAAAAAAADAAAAAAAAAAxJbnZhbGlkVG9rZW4AAAAEAAAAAAAAABBJbnZhbGlkUmVjaXBpZW50AAAABQAAAAAAAAANSW52YWxpZEFtb3VudAAAAAAAAAYAAAAAAAAAEUludmFsaWRDb21taXRtZW50AAAAAAAABwAAAAAAAAAQSW52YWxpZE51bGxpZmllcgAAAAgAAAAAAAAAE0R1cGxpY2F0ZU51bGxpZmllcnMAAAAACQAAAAAAAAAVTnVsbGlmaWVyQWxyZWFkeVNwZW50AAAAAAAACgAAAAAAAAASVmVyaWZpY2F0aW9uRmFpbGVkAAAAAAALAAAAAAAAAAhOb3RPd25lcgAAAAwAAAAAAAAAD1Rva2VuTm90RW5hYmxlZAAAAAANAAAAAAAAABNUb2tlblRyYW5zZmVyRmFpbGVkAAAAAA4AAAAAAAAAFEFzcE1lbWJlcnNoaXBJbnZhbGlkAAAADwAAAAAAAAAKTm90QXNwR2F0ZQAAAAAAEA==",
+        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAADAAAAAAAAAAAAAAABU93bmVyAAAAAAAAAAAAAAAAAAAIVmVyaWZpZXIAAAAAAAAAAAAAAApNZXJrbGVUcmVlAAAAAAAAAAAAAAAAAA1Bc3BNZW1iZXJzaGlwAAAAAAAAAAAAAAAAAAAHQXNwRGVueQAAAAAAAAAAAAAAAAtWZXJpZmllckFzcAAAAAAAAAAAAAAAABBBc3BFbmZvcmNlU2hpZWxkAAAAAAAAAAAAAAAHQXNwR2F0ZQAAAAABAAAAAAAAAAxFbmFibGVkVG9rZW4AAAABAAAAEwAAAAEAAAAAAAAADVRva2VuRmllbGRGb3IAAAAAAAABAAAAEwAAAAEAAAAAAAAADFRva2VuQnlGaWVsZAAAAAEAAAPuAAAAIAAAAAEAAAAAAAAACU51bGxpZmllcgAAAAAAAAEAAAPuAAAAIA==",
         "AAAAAQAAAAAAAAAAAAAAClJvdXRlZE5vdGUAAAAAAAMAAAAAAAAAB2NoYW5uZWwAAAAD7gAAACAAAAAAAAAADmVuY3J5cHRlZF9ub3RlAAAAAAAOAAAAAAAAAApzdWJjaGFubmVsAAAAAAPuAAAAIA==",
         "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",
-        "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",
+        "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",
+        "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" ]),
       options
@@ -216,8 +260,10 @@ export class Client extends ContractClient {
   public readonly fromJSON = {
     unshield: this.txFromJSON<Result<void>>,
         token_field: this.txFromJSON<Buffer>,
+        configure_asp: this.txFromJSON<Result<void>>,
         shield_routed: this.txFromJSON<Result<void>>,
         nullifier_spent: this.txFromJSON<boolean>,
+        fulfill_unshield: this.txFromJSON<Result<void>>,
         set_token_enabled: this.txFromJSON<Result<void>>,
         shielded_transfer_routed: this.txFromJSON<Result<void>>
   }
