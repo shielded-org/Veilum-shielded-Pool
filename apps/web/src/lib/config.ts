@@ -3,6 +3,7 @@ import type { DeploymentAddresses, NetworkConfig, NetworkName } from "./types";
 type RawNetwork = {
   networkPassphrase: string;
   rpcUrl: string;
+  eventsRpcUrls?: string[];
   horizonUrl?: string;
   friendbotUrl?: string;
 };

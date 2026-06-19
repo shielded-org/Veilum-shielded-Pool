@@ -1,5 +1,8 @@
 import { tokenFieldFromContractId } from "./config";
 import type { DeploymentAddresses, Hex32 } from "./types";
+import type { NetworkConfig } from "./types";
+import { getTokenField } from "./soroban";
+import { createRpc } from "./soroban";
 import { listStableTokens, STABLE_CATALOG, type ListedStable, type StableSymbol } from "./tokens";
 
 export type TokenFieldRegistry = {
@@ -27,6 +30,51 @@ export async function buildTokenFieldRegistry(
 
   for (const token of listStableTokens(contracts)) {
     const field = await tokenFieldFromContractId(token.contractId);
+    byField.set(field.toLowerCase(), token);
+  }
+
+  function lookup(field: Hex32 | string | undefined): ListedStable | undefined {
+    if (!field) return undefined;
+    return byField.get(field.toLowerCase());
+  }
+
+  return {
+    byField,
+    labelForField(field) {
+      const token = lookup(field);
+      return token ? `${token.name} (${token.symbol})` : "Unknown token";
+    },
+    symbolForField(field) {
+      return lookup(field)?.symbol ?? "—";
+    },
+    nameForField(field) {
+      return lookup(field)?.name ?? "Unknown token";
+    },
+    labelForSymbol(symbol) {
+      const meta = STABLE_CATALOG[symbol];
+      return `${meta.name} (${meta.symbol})`;
+    },
+    labelForContractKey(key) {
+      if (key.startsWith("token.")) {
+        const sym = key.slice("token.".length) as StableSymbol;
+        if (STABLE_CATALOG[sym]) return STABLE_CATALOG[sym].name;
+      }
+      return CONTRACT_LABELS[key] ?? key;
+    },
+  };
+}
+
+/** Resolve token fields from the pool contract (matches note.token on shielded notes). */
+export async function buildTokenFieldRegistryOnChain(
+  config: NetworkConfig,
+  wallet: string
+): Promise<TokenFieldRegistry> {
+  const rpc = createRpc(config);
+  const poolId = config.contracts.shieldedPool;
+  const byField = new Map<string, ListedStable>();
+
+  for (const token of listStableTokens(config.contracts)) {
+    const field = await getTokenField(rpc, config, wallet, poolId, token.contractId);
     byField.set(field.toLowerCase(), token);
   }
 

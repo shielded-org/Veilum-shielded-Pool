@@ -16,9 +16,17 @@ function cacheKey(values: bigint[]): string {
 }
 
 function fieldFromReturnValue(returnValue: string): Hex32 {
-  const match = returnValue.match(/^0x[0-9a-fA-F]{64}$/);
-  if (match) return match[0] as Hex32;
-  const numMatch = returnValue.match(/(-?\d+)/);
+  const s = String(returnValue).trim();
+  // noir_js may return `0xf5de7e…` (63 hex digits) — pad before validating length.
+  const hexMatch = s.match(/^0x([0-9a-fA-F]{1,64})$/i);
+  if (hexMatch) {
+    return `0x${hexMatch[1].padStart(64, "0")}` as Hex32;
+  }
+  const bareHex = s.match(/^[0-9a-fA-F]{1,64}$/i);
+  if (bareHex) {
+    return `0x${bareHex[0].padStart(64, "0")}` as Hex32;
+  }
+  const numMatch = s.match(/(-?\d+)/);
   if (!numMatch) throw new Error(`Cannot parse noir return: ${returnValue}`);
   return toHex32(BigInt(numMatch[1]));
 }
@@ -45,6 +53,14 @@ export type PoseidonHasher = {
 };
 
 let browserHasherPromise: Promise<PoseidonHasher> | null = null;
+
+/** Clear WASM hash caches (e.g. after fixing field parsing — hard refresh also works). */
+export function clearPoseidonCaches(): void {
+  hash2Cache.clear();
+  noteHashCache.clear();
+  browserHasherPromise = null;
+  cachedZeroes = null;
+}
 
 /** Singleton WASM hasher — avoids re-init on every wallet refresh. */
 export function getBrowserPoseidonHasher(): Promise<PoseidonHasher> {
@@ -138,6 +154,62 @@ export async function buildSpendPath(
 ) {
   const { levels, zeroes } = await buildLevelMaps(hasher, leaves, depth);
   return extractPath(levels, zeroes, targetIndex, depth);
+}
+
+/** Matches IncrementalMerkleTree::try_insert — same root as on-chain append-only inserts. */
+export async function computeIncrementalMerkleRoot(
+  hasher: PoseidonHasher,
+  leaves: Hex32[],
+  depth = 20
+): Promise<Hex32> {
+  const zeroes = await zeroesForDepth(hasher, depth);
+  const filledSubtrees = new Array<bigint>(depth).fill(0n);
+
+  let currentRoot = 0n;
+  for (let i = 0; i < depth; i += 1) {
+    currentRoot = BigInt(await hasher.hash2(currentRoot, currentRoot));
+  }
+
+  for (let leafIndex = 0; leafIndex < leaves.length; leafIndex += 1) {
+    let index = leafIndex;
+    let currentHash = parseHex32(leaves[leafIndex]);
+    for (let level = 0; level < depth; level += 1) {
+      if ((index & 1) === 0) {
+        filledSubtrees[level] = currentHash;
+        currentHash = BigInt(await hasher.hash2(currentHash, zeroes[level]));
+      } else {
+        currentHash = BigInt(await hasher.hash2(filledSubtrees[level], currentHash));
+      }
+      index >>= 1;
+    }
+    currentRoot = currentHash;
+  }
+  return toHex32(currentRoot);
+}
+
+/** Batch sparse-tree root (shielded-token parity). */
+export async function computeBatchMerkleRoot(
+  hasher: PoseidonHasher,
+  leaves: Hex32[],
+  depth = 20
+): Promise<Hex32> {
+  if (leaves.length === 0) return computeIncrementalMerkleRoot(hasher, [], depth);
+  const path = await buildSpendPath(hasher, leaves, 0, depth);
+  return path.root;
+}
+
+/** Prefer incremental root (matches contract); fall back to batch rebuild. */
+export async function computeMerkleRootFromLeaves(
+  hasher: PoseidonHasher,
+  leaves: Hex32[],
+  depth = 20
+): Promise<{ root: Hex32; method: "incremental" | "batch" }> {
+  const incremental = await computeIncrementalMerkleRoot(hasher, leaves, depth);
+  const batch = await computeBatchMerkleRoot(hasher, leaves, depth);
+  if (incremental.toLowerCase() === batch.toLowerCase()) {
+    return { root: incremental, method: "incremental" };
+  }
+  return { root: incremental, method: "batch" };
 }
 
 export async function buildLevelMaps(hasher: PoseidonHasher, leaves: Hex32[], depth = 20) {
