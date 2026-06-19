@@ -9,19 +9,26 @@ import {
   LandingStepsSection,
   LandingTrustBar,
 } from "../components/landing/LandingSections";
+import { ScrollReveal } from "../components/ui/ScrollReveal";
+
+const ACTIVITY_ROWS = [
+  ["Deposited", "2,400.00 USDC"],
+  ["Private payment", "confirmed"],
+  ["Withdrawal", "recorded on-chain"],
+] as const;
 
 export function LandingPage() {
   return (
     <>
       <section className="landing-hero">
-        <div className="landing-hero__copy">
+        <ScrollReveal className="landing-hero__copy" as="div" immediate variant="up" delay={0}>
           <LandingTrustBar />
           <h1>
-            Private stablecoin payments, <em>on Stellar.</em>
+            Private stablecoin payments on <em>Stellar</em>
           </h1>
           <p className="landing-hero__lead">
-            Veilum shields USDC and stablecoins into encrypted notes, sends value privately with zero-knowledge
-            proofs, and lets you withdraw to any Stellar address — verified on Soroban, not blind trust.
+            Veilum lets you hold, send, and receive USDC and other stablecoins without broadcasting every
+            payment to the world. Add and withdraw like normal — what happens in between stays yours.
           </p>
           <div className="landing-actions">
             <Link to="/dashboard" className="btn btn-primary btn-lg">
@@ -31,41 +38,26 @@ export function LandingPage() {
               How it works
             </Link>
           </div>
-          <dl className="landing-stats">
-            <div>
-              <dt>Proof system</dt>
-              <dd>UltraHonk</dd>
-            </div>
-            <div>
-              <dt>Tree depth</dt>
-              <dd>2²⁰ notes</dd>
-            </div>
-            <div>
-              <dt>Network</dt>
-              <dd>Stellar testnet</dd>
-            </div>
-          </dl>
-        </div>
-        <div className="landing-card-stack" aria-hidden>
-          <div className="landing-card landing-card--back-2">
-            <div className="landing-card__chip" />
-            <div className="landing-card__label">Shielded · USDC</div>
-            <div className="landing-card__balance">••••••</div>
-            <div className="landing-card__meta">Encrypted note</div>
+        </ScrollReveal>
+
+        <ScrollReveal className="landing-hero__visual" as="div" immediate variant="right" delay={120}>
+          <div className="terminal-panel">
+            <div className="terminal-panel__titlebar">your activity</div>
+            <dl className="terminal-panel__body">
+              {ACTIVITY_ROWS.map(([label, value]) => (
+                <div key={label} className="terminal-row">
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-          <div className="landing-card landing-card--back-1">
-            <div className="landing-card__chip" />
-            <div className="landing-card__label">Shielded · USDC</div>
-            <div className="landing-card__balance">••••••</div>
-            <div className="landing-card__meta">Private balance</div>
+          <div className="terminal-preview">
+            <div className="terminal-line terminal-line--ok">✓ Balance secured · 2,400.00 USDC</div>
+            <div className="terminal-line terminal-line--ok">✓ Private payment · delivered</div>
+            <div className="terminal-line">— Ready to withdraw to your wallet</div>
           </div>
-          <div className="landing-card landing-card--front">
-            <div className="landing-card__chip landing-card__chip--brand" />
-            <div className="landing-card__label">Veilum wallet</div>
-            <div className="landing-card__balance landing-card__balance--show">2,400.00</div>
-            <div className="landing-card__meta">USDC shielded</div>
-          </div>
-        </div>
+        </ScrollReveal>
       </section>
 
       <LandingPrivacySection />
