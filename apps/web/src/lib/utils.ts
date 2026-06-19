@@ -1,5 +1,10 @@
 import type { Hex32 } from "./types";
 import { BN254_FIELD_MODULUS } from "./types";
+import {
+  stableCurrencyForSymbol,
+  stableDenominationSymbol,
+  STABLE_AMOUNT_LOCALE,
+} from "./tokens";
 
 export function toHex32(value: bigint): Hex32 {
   const mod = ((value % BN254_FIELD_MODULUS) + BN254_FIELD_MODULUS) % BN254_FIELD_MODULUS;
@@ -33,6 +38,53 @@ export function formatTokenAmount(raw: bigint, decimals = 7): string {
   if (frac === 0n) return whole.toString();
   const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
   return `${whole}.${fracStr}`;
+}
+
+/** Stablecoin display with the asset's denomination ($, €, etc.). */
+export function formatStableAmount(raw: bigint, stableSymbol: string, decimals = 7): string {
+  const amount = formatTokenAmount(raw, decimals);
+  const num = Number(amount);
+  const currency = stableCurrencyForSymbol(stableSymbol);
+  if (Number.isFinite(num)) {
+    return num.toLocaleString(STABLE_AMOUNT_LOCALE, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  }
+  return `${stableDenominationSymbol(stableSymbol)}${amount}`;
+}
+
+/** @deprecated Prefer formatStableAmount with the token symbol. */
+export function formatStableUsd(raw: bigint, decimals = 7): string {
+  return formatStableAmount(raw, "USDC", decimals);
+}
+
+/** Parse stored tx strings like "750 USDC" or "200 EURC" into localized currency. */
+export function formatTxAmountUsd(amount: string): string {
+  return formatTxAmount(amount);
+}
+
+export function formatTxAmount(amount: string): string {
+  const match = amount.trim().match(/^([\d,.]+)\s+(\S+)$/);
+  if (!match) return amount;
+  const num = Number(match[1].replace(/,/g, ""));
+  const symbol = match[2];
+  const currency = stableCurrencyForSymbol(symbol);
+  if (Number.isFinite(num)) {
+    return num.toLocaleString(STABLE_AMOUNT_LOCALE, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  }
+  return `${stableDenominationSymbol(symbol)}${match[1]}`;
+}
+
+export function maskStableAmount(stableSymbol: string): string {
+  return `${stableDenominationSymbol(stableSymbol)}••••••`;
 }
 
 export function parseTokenAmount(input: string, decimals = 7): bigint {
