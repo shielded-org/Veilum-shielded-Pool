@@ -55,56 +55,58 @@ export function KeysPage() {
   return (
     <FormPageLayout
       aside={
-        <FormAsidePanel title="Sharing safely">
-          <FormAsideList
-            items={[
-              { term: "Share only shd_ address", detail: "Safe to give senders — routes encrypted notes to you." },
-              { term: "Never share private keys", detail: "Viewing and spending keys control your shielded funds." },
-              { term: "Same network", detail: "Address includes network id — must match sender's dashboard." },
-            ]}
-          />
-        </FormAsidePanel>
+        <div className="form-layout__aside">
+          <FormAsidePanel title="Sharing safely">
+            <FormAsideList
+              items={[
+                {
+                  term: "Share only shd_ address",
+                  detail: "Safe to give senders — routes encrypted notes to you.",
+                },
+                {
+                  term: "Never share private keys",
+                  detail: "Viewing and spending keys control your shielded funds.",
+                },
+                {
+                  term: "Same network",
+                  detail: "Address includes network id — must match sender's dashboard.",
+                },
+              ]}
+            />
+          </FormAsidePanel>
+        </div>
       }
     >
-      <div className="card keys-card">
-        {!hasKeys && wallet && (
-          <p className="alert-banner alert-banner--warn keys-card__alert">
+      <div className="card form-card keys-form">
+        {!hasKeys && wallet ? (
+          <p className="alert-banner alert-banner--warn">
             Keys not loaded — connect your wallet and approve the one-time key derivation signature.
           </p>
-        )}
+        ) : null}
 
-        <section className="keys-panel keys-panel--receive">
-          <header className="keys-panel__head">
-            <h2>Receive address</h2>
-            <p>
-              Share your shielded receive address with senders. They paste one string to route encrypted
-              notes to you.
-            </p>
-          </header>
+        <p className="form-notice form-notice--private">
+          <span className="form-notice__label">Private receive address</span>
+          Share only your <code>shd_…</code> address with senders. Never share viewing or spending
+          private keys — they control your shielded funds.
+        </p>
 
+        <section className="keys-section">
+          <h3 className="keys-section__heading">Receive address</h3>
           <CopyableField
             id="shielded-receive"
             label="Shielded receive address"
             value={shieldedAddress}
-            hint={
-              <>
-                Format: <code>shd_</code> + base64url(owner PK, viewing pub, network id).
-              </>
-            }
+            prominent
+            hint="Paste this on the Transfer page. Format: shd_ + base64url(owner PK, viewing pub, network id)."
           />
-
-          <p className="keys-panel__note">
-            Only share the <code>shd_</code> address with senders — never your private keys.
-          </p>
         </section>
 
-        <section className="keys-panel">
-          <header className="keys-panel__head">
-            <h2>Public identity</h2>
-            <p>Your Stellar wallet and shielded public keys derived from it.</p>
-          </header>
-
-          <div className="keys-panel__fields">
+        <section className="keys-section">
+          <h3 className="keys-section__heading">Public identity</h3>
+          <p className="keys-section__lead">
+            Your Stellar wallet and shielded public keys derived from it.
+          </p>
+          <div className="keys-section__fields">
             <CopyableField
               id="stellar-wallet"
               label="Stellar wallet address"
@@ -130,19 +132,19 @@ export function KeysPage() {
           </div>
         </section>
 
-        <section className="keys-panel keys-panel--private">
-          <header className="keys-panel__head keys-panel__head--row">
+        <section className="keys-section keys-section--sensitive">
+          <div className="keys-section__head-row">
             <div>
-              <h2>Private keys</h2>
-              <p>Never share these — they control decryption and spending.</p>
+              <h3 className="keys-section__heading">Private keys</h3>
+              <p className="keys-section__lead">Never share these — they control decryption and spending.</p>
             </div>
             <label className="keys-reveal-toggle">
               <input type="checkbox" checked={revealKeys} onChange={handleRevealToggle} />
               Reveal private keys
             </label>
-          </header>
+          </div>
 
-          {pendingReveal && (
+          {pendingReveal ? (
             <div className="key-reveal-confirm" role="alertdialog" aria-labelledby="reveal-title">
               <p id="reveal-title">
                 <strong>Reveal sensitive keys?</strong> Your viewing and spending private keys will be
@@ -157,9 +159,9 @@ export function KeysPage() {
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          <div className="keys-panel__fields">
+          <div className="keys-section__fields">
             <CopyableField
               id="viewing-priv"
               label="Viewing private key"
