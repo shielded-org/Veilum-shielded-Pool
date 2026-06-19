@@ -1,60 +1,60 @@
 import { Link } from "react-router-dom";
 
-import { FadeInSection } from "../components/ui/FadeInSection";
+import { RevealItem, ScrollReveal } from "../components/ui/ScrollReveal";
 import { IconLock, IconUploadCloud, IconDownloadCloud } from "../components/ui/icons";
 
 const BOUNDARIES = [
   {
     icon: IconUploadCloud,
-    title: "Shield (deposit)",
-    detail: "Your Stellar address and deposit amount are public on-chain.",
+    title: "Adding funds",
+    detail: "Your wallet address and the amount you deposit are visible on Stellar — the same as any transfer.",
     tone: "public" as const,
   },
   {
     icon: IconLock,
-    title: "Private transfer",
-    detail: "Relayer signs the tx. Amount, sender, and recipient stay encrypted.",
+    title: "Private payments",
+    detail: "Who paid whom and how much stays hidden. The network still confirms the payment is valid.",
     tone: "private" as const,
   },
   {
     icon: IconDownloadCloud,
-    title: "Unshield (withdraw)",
-    detail: "Recipient address and withdrawn amount are visible. Change can stay private.",
+    title: "Withdrawing",
+    detail: "The destination address and amount you withdraw are public. Anything you leave behind can stay private.",
     tone: "public" as const,
   },
 ];
 
 const BUILT = [
-  "Multi-token shielded pool with Merkle commitments",
-  "Private transfers via relayer (sender identity hidden)",
-  "Partial unshield with private change notes",
-  "ECDH encrypted notes with channel/subchannel routing",
-  "Browser-side UltraHonk proof generation (Noir.js + bb.js)",
+  "Hold USDC and other stablecoins in a private balance",
+  "Send payments without exposing sender, recipient, or amount",
+  "Withdraw part of a balance and keep the rest private",
+  "Receive payments with a shareable address — no account setup for the sender",
+  "Keys stay on your device; we never see them",
 ];
 
 export function AboutPage() {
   return (
-    <FadeInSection className="content-page">
-      <header className="content-page__hero">
+    <div className="content-page">
+      <ScrollReveal className="content-page__hero" as="header" immediate variant="up">
         <h1>About Veilum</h1>
         <p className="content-page__lead">
-          Veilum brings selective privacy to Stellar stablecoin payments — shielded-pool architecture
-          with UltraHonk verification and relayer-submitted private transfers.
+          Veilum brings private stablecoin payments to Stellar. Use the coins you already trust — with control
+          over who can see what you send and receive.
         </p>
-      </header>
+      </ScrollReveal>
 
       <div className="content-grid">
-        <article className="card content-card">
-          <h2>What we built</h2>
+        <RevealItem as="article" className="card content-card" index={0}>
+          <h2>What you get</h2>
           <ul className="content-list">
             {BUILT.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-        </article>
+        </RevealItem>
 
-        <article className="card content-card">
-          <h2>Privacy boundaries</h2>
+        <RevealItem as="article" className="card content-card" index={1}>
+          <h2>What others can see</h2>
           <div className="content-boundaries">
             {BOUNDARIES.map(({ icon: Icon, title, detail, tone }) => (
               <div key={title} className={`content-boundary content-boundary--${tone}`}>
@@ -68,31 +68,40 @@ export function AboutPage() {
               </div>
             ))}
           </div>
-        </article>
+        </RevealItem>
       </div>
 
-      <article className="card content-card content-card--wide">
-        <h2>Architecture at a glance</h2>
+      <ScrollReveal as="article" className="card content-card content-card--wide" variant="up">
+        <h2>How it works behind the scenes</h2>
         <div className="content-arch">
           <div>
-            <h3>On-chain</h3>
-            <p>Soroban shielded pool, incremental Poseidon2 Merkle tree, UltraHonk verifier, nullifier set.</p>
+            <h3>On Stellar</h3>
+            <p>
+              Your balances live in a shared pool on the Stellar network. Every private payment is checked
+              before it is accepted — so you are not relying on blind trust.
+            </p>
           </div>
           <div>
-            <h3>Off-chain</h3>
-            <p>Browser proof generation, ECDH note encryption, relayer submission for private ops.</p>
+            <h3>On your device</h3>
+            <p>
+              Your browser prepares and encrypts payments locally. Sensitive details never pass through our
+              servers.
+            </p>
           </div>
           <div>
-            <h3>Keys</h3>
-            <p>Derived locally from a one-time wallet signature. Never sent to a server.</p>
+            <h3>Your keys</h3>
+            <p>
+              Unlocked with a one-time approval from your wallet. They never leave your browser and are never
+              stored by Veilum.
+            </p>
           </div>
         </div>
         <p className="content-footnote">
-          Contracts are deployed on Stellar testnet. The relayer sponsors gas for private operations so users
-          are not linked as transaction signers for transfers and withdrawals.{" "}
-          <Link to="/how-to-use">Read the guide →</Link>
+          Veilum is live on Stellar testnet today. Private sends are submitted on your behalf so your wallet
+          is not publicly linked to every payment.{" "}
+          <Link to="/how-to-use">See the step-by-step guide →</Link>
         </p>
-      </article>
-    </FadeInSection>
+      </ScrollReveal>
+    </div>
   );
 }
