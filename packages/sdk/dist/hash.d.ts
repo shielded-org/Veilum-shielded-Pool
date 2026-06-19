@@ -16,6 +16,13 @@ export declare function deriveOwnerPk(hasher: PoseidonHasher, spendingKey: bigin
 export declare function noteCommitment(hasher: PoseidonHasher, ownerPk: bigint, tokenField: Hex32, amount: bigint, blinding: bigint): Promise<Hex32>;
 export declare function nullifier(hasher: PoseidonHasher, spendingKey: bigint, commitment: Hex32): Promise<Hex32>;
 export declare function buildZeroes(hasher: PoseidonHasher, depth: number): Promise<bigint[]>;
+/** Siblings/path for a sequentially-inserted leaf — matches contract verify_path. */
+export declare function computeIncrementalMerklePath(hasher: PoseidonHasher, leaves: Hex32[], targetIndex: number, depth?: number): Promise<{
+    root: Hex32;
+    siblings: Hex32[];
+    directions: boolean[];
+    leafIndex: number;
+}>;
 export declare function buildLevelMaps(hasher: PoseidonHasher, leaves: Hex32[], depth?: number): Promise<{
     levels: Map<number, bigint>[];
     zeroes: bigint[];

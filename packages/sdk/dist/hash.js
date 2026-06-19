@@ -2,12 +2,9 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { BN254_FIELD_MODULUS } from "./types.js";
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const NOTE_HASH_DIR = join(__dirname, "../../note-hash");
-const HASH2_DIR = join(__dirname, "../../hash2");
+import { resolveNoirPackage } from "./noir-packages.js";
 const hash2Cache = new Map();
 const noteHashCache = new Map();
 function cacheKey(values) {
@@ -40,7 +37,7 @@ export function computeHash2ViaNoir(left, right) {
     if (cached)
         return cached;
     const dir = mkdtempSync(join(tmpdir(), "hash2-"));
-    execFileSync("cp", ["-R", HASH2_DIR + "/.", dir + "/"], { stdio: "pipe" });
+    execFileSync("cp", ["-R", resolveNoirPackage("hash2") + "/.", dir + "/"], { stdio: "pipe" });
     const toml = `
 left = "${left.toString()}"
 right = "${right.toString()}"
@@ -95,7 +92,7 @@ export function computeNoteHashViaNoir(owner, token, amount, blinding) {
     if (cached)
         return Promise.resolve(cached);
     const dir = mkdtempSync(join(tmpdir(), "note-hash-"));
-    execFileSync("cp", ["-R", NOTE_HASH_DIR + "/.", dir + "/"], { stdio: "pipe" });
+    execFileSync("cp", ["-R", resolveNoirPackage("note-hash") + "/.", dir + "/"], { stdio: "pipe" });
     const ownerStr = typeof owner === "bigint" ? owner.toString() : owner;
     const tokenStr = typeof token === "bigint" ? token.toString() : token;
     const toml = `
@@ -127,6 +124,51 @@ export async function buildZeroes(hasher, depth) {
         cur = BigInt(await hasher.hash2(cur, cur));
     }
     return zeroes;
+}
+/** Matches on-chain append-only incremental merkle insert (ASP + pool trees). */
+async function incrementalInsertLeaf(hasher, leaf, leafIndex, depth, zeroes, filledSubtrees) {
+    let index = leafIndex;
+    let currentHash = leaf;
+    for (let level = 0; level < depth; level += 1) {
+        if ((index & 1) === 0) {
+            filledSubtrees[level] = currentHash;
+            currentHash = BigInt(await hasher.hash2(currentHash, zeroes[level]));
+        }
+        else {
+            currentHash = BigInt(await hasher.hash2(filledSubtrees[level], currentHash));
+        }
+        index >>= 1;
+    }
+}
+/** Siblings/path for a sequentially-inserted leaf — matches contract verify_path. */
+export async function computeIncrementalMerklePath(hasher, leaves, targetIndex, depth = 20) {
+    if (targetIndex < 0 || targetIndex >= leaves.length) {
+        throw new Error("targetIndex out of range for incremental merkle path");
+    }
+    const zeroes = await buildZeroes(hasher, depth);
+    const filledSubtrees = new Array(depth).fill(0n);
+    for (let leafIdx = 0; leafIdx < targetIndex; leafIdx += 1) {
+        await incrementalInsertLeaf(hasher, parseHex32(leaves[leafIdx]), leafIdx, depth, zeroes, filledSubtrees);
+    }
+    const siblings = [];
+    const directions = [];
+    let index = targetIndex;
+    let currentHash = parseHex32(leaves[targetIndex]);
+    for (let level = 0; level < depth; level += 1) {
+        if ((index & 1) === 0) {
+            siblings.push(toHex32(zeroes[level]));
+            directions.push(false);
+            filledSubtrees[level] = currentHash;
+            currentHash = BigInt(await hasher.hash2(currentHash, zeroes[level]));
+        }
+        else {
+            siblings.push(toHex32(filledSubtrees[level]));
+            directions.push(true);
+            currentHash = BigInt(await hasher.hash2(filledSubtrees[level], currentHash));
+        }
+        index >>= 1;
+    }
+    return { root: toHex32(currentHash), siblings, directions, leafIndex: targetIndex };
 }
 export async function buildLevelMaps(hasher, leaves, depth = 20) {
     const zeroes = await buildZeroes(hasher, depth);

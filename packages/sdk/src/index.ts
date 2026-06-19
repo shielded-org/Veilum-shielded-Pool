@@ -6,3 +6,5 @@ export * from "./proof-cli.js";
 export * from "./keys.js";
 export * from "./routing.js";
 export * from "./relayer.js";
+export * from "./asp.js";
+export * from "./proof-asp.js";

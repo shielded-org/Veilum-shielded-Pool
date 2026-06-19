@@ -34,8 +34,13 @@ export async function waitForRelayerConfirmation(relayerUrl, requestId, timeoutM
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
         const status = await fetchRelayerStatus(relayerUrl, requestId);
-        if (status.status === "confirmed")
-            return status;
+        if (status.status === "confirmed") {
+            const hash = status.txHash?.replace(/^0x/i, "") ?? "";
+            if (!/^[0-9a-f]{64}$/i.test(hash)) {
+                throw new Error("Relayer confirmed without a valid on-chain transaction hash");
+            }
+            return { ...status, txHash: hash.toLowerCase() };
+        }
         if (status.status === "failed" || status.status === "timeout") {
             throw new Error(status.error || `Relayer request ${status.status}`);
         }

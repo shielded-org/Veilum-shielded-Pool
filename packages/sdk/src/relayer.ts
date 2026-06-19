@@ -1,7 +1,11 @@
+import type { ProofInputs } from "./proof.js";
+
 export type StellarShieldedTransferPayload = {
   network?: string;
   shieldedPool: string;
-  proofBytes: string;
+  /** Relayer runs nargo+bb — preferred for on-chain verifier compatibility. */
+  proofInputs?: ProofInputs;
+  proofBytes?: string;
   transferMeta: string;
   encryptedNote0: string;
   encryptedNote1: string;
@@ -34,6 +38,12 @@ export type StellarUnshieldPayload = {
   encryptedNote?: string;
   channel?: string;
   subchannel?: string;
+  /** When true, relayer invokes unshield_with_asp and requires ASP fields. */
+  useAsp?: boolean;
+  ownerPk?: string;
+  aspMembershipRoot?: string;
+  aspGate?: string;
+  publicInputs?: string;
 };
 
 export async function submitUnshieldToRelayer(
@@ -86,7 +96,13 @@ export async function waitForRelayerConfirmation(
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const status = await fetchRelayerStatus(relayerUrl, requestId);
-    if (status.status === "confirmed") return status;
+    if (status.status === "confirmed") {
+      const hash = status.txHash?.replace(/^0x/i, "") ?? "";
+      if (!/^[0-9a-f]{64}$/i.test(hash)) {
+        throw new Error("Relayer confirmed without a valid on-chain transaction hash");
+      }
+      return { ...status, txHash: hash.toLowerCase() };
+    }
     if (status.status === "failed" || status.status === "timeout") {
       throw new Error(status.error || `Relayer request ${status.status}`);
     }

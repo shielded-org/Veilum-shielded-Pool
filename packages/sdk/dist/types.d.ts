@@ -1,6 +1,7 @@
 export declare const BN254_FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 export declare const TREE_DEPTH = 20;
 export declare const PUBLIC_INPUT_COUNT = 12;
+export declare const PUBLIC_INPUT_COUNT_ASP = 14;
 export declare const PROOF_BYTES: number;
 export type Hex32 = `0x${string}`;
 export type ShieldedNote = {
@@ -20,6 +21,11 @@ export type DeploymentAddresses = {
     deployLedger?: number;
     indexedRouteEvents?: boolean;
     tokens?: Partial<Record<"USDC" | "EURC" | "YLDS" | "MGUSD", string>>;
+    aspMembership?: string;
+    aspDeny?: string;
+    verifierAsp?: string;
+    aspGate?: string;
+    aspEnforceShield?: boolean;
 };
 export type NetworkConfig = {
     networkPassphrase: string;

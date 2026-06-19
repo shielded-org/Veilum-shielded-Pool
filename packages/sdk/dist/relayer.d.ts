@@ -1,7 +1,10 @@
+import type { ProofInputs } from "./proof.js";
 export type StellarShieldedTransferPayload = {
     network?: string;
     shieldedPool: string;
-    proofBytes: string;
+    /** Relayer runs nargo+bb — preferred for on-chain verifier compatibility. */
+    proofInputs?: ProofInputs;
+    proofBytes?: string;
     transferMeta: string;
     encryptedNote0: string;
     encryptedNote1: string;
@@ -32,6 +35,12 @@ export type StellarUnshieldPayload = {
     encryptedNote?: string;
     channel?: string;
     subchannel?: string;
+    /** When true, relayer invokes unshield_with_asp and requires ASP fields. */
+    useAsp?: boolean;
+    ownerPk?: string;
+    aspMembershipRoot?: string;
+    aspGate?: string;
+    publicInputs?: string;
 };
 export declare function submitUnshieldToRelayer(relayerUrl: string, payload: StellarUnshieldPayload): Promise<RelayerResponse>;
 export declare function submitShieldedTransferToRelayer(relayerUrl: string, payload: StellarShieldedTransferPayload): Promise<RelayerResponse>;

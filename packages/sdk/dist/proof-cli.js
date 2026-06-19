@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { PROOF_BYTES, PUBLIC_INPUT_COUNT } from "./types.js";
 export function writeProverToml(circuitsDir, payload) {
     const toml = `
 spending_key = "${payload.spending_key}"
@@ -30,28 +32,63 @@ unshield_token_address = "${payload.unshield_token_address}"
 `.trimStart();
     writeFileSync(join(circuitsDir, "Prover.toml"), toml, "utf8");
 }
-export function generateUltraHonkProofCli(circuitsDir, inputs) {
+function toolEnv() {
+    const extra = [join(homedir(), ".nargo/bin"), join(homedir(), ".bb/bin")].join(":");
+    return { ...process.env, PATH: `${extra}:${process.env.PATH ?? ""}` };
+}
+function runOrThrow(cmd, args, cwd) {
+    try {
+        execFileSync(cmd, args, {
+            cwd,
+            env: toolEnv(),
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+    }
+    catch (error) {
+        const e = error;
+        const detail = [e.stderr?.toString(), e.stdout?.toString(), e.message]
+            .filter(Boolean)
+            .join("\n")
+            .trim();
+        throw new Error(`${cmd} ${args[0]} failed${detail ? `:\n${detail}` : ""}`);
+    }
+}
+function proveInCircuitsDir(circuitsDir, inputs) {
+    const bytecode = join(circuitsDir, "target/shielded_transfer.json");
+    if (!existsSync(bytecode)) {
+        throw new Error(`Missing circuit bytecode at ${bytecode} — run npm run build:circuits from the repo root`);
+    }
+    const targetDir = join(circuitsDir, "target");
+    mkdirSync(targetDir, { recursive: true });
     writeProverToml(circuitsDir, inputs);
-    execFileSync("nargo", ["execute"], { cwd: circuitsDir, stdio: "inherit" });
-    execFileSync("bb", [
+    runOrThrow("nargo", ["execute"], circuitsDir);
+    runOrThrow("bb", [
         "prove",
         "-b",
         "target/shielded_transfer.json",
         "-w",
         "target/shielded_transfer.gz",
         "-o",
-        "target",
+        targetDir,
         "--scheme",
         "ultra_honk",
         "--oracle_hash",
         "keccak",
         "--output_format",
         "bytes_and_fields",
-    ], { cwd: circuitsDir, stdio: "inherit" });
-    const proofFile = readFileSync(join(circuitsDir, "target/proof"));
-    const proofBytes = proofFile.length === 12 * 32 + 456 * 32
-        ? proofFile.subarray(12 * 32)
+    ], circuitsDir);
+    const proofFile = readFileSync(join(targetDir, "proof"));
+    const proofBytes = proofFile.length === PUBLIC_INPUT_COUNT * 32 + PROOF_BYTES
+        ? proofFile.subarray(PUBLIC_INPUT_COUNT * 32)
         : proofFile;
-    const publicInputsBytes = readFileSync(join(circuitsDir, "target/public_inputs"));
-    return { proofBytes, publicInputsBytes };
+    const publicInputsBytes = readFileSync(join(targetDir, "public_inputs"));
+    return { proofBytes: Buffer.from(proofBytes), publicInputsBytes };
+}
+let proveChain = Promise.resolve();
+/** Serialized nargo+bb prove — one at a time on the shared circuits dir. */
+export async function generateUltraHonkProofCli(circuitsDir, inputs) {
+    const run = () => proveInCircuitsDir(circuitsDir, inputs);
+    const next = proveChain.then(run, run);
+    proveChain = next.then(() => undefined, () => undefined);
+    return next;
 }
