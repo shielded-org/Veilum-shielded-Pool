@@ -6,12 +6,14 @@ export type PoseidonHasher = {
 declare function toHex32(value: bigint): Hex32;
 declare function parseHex32(hex: Hex32 | bigint): bigint;
 export declare function computeHash2ViaNoir(left: bigint, right: bigint): Hex32;
+export declare function computeHash2Wasm(left: bigint, right: bigint): Promise<Hex32>;
 /** Local Noir Poseidon2 — matches on-chain merkle tree and circuit (no RPC). */
 export declare function createLocalPoseidonHasher(): PoseidonHasher;
 /** Default hasher for proofs: local Noir (fast, no network). */
 export declare const createPoseidonHasher: typeof createLocalPoseidonHasher;
 export declare function createCliPoseidonHasher(merkleContractId: string, network: string, sourceAccount: string): PoseidonHasher;
 export declare function computeNoteHashViaNoir(owner: bigint | Hex32, token: bigint | Hex32, amount: bigint, blinding: bigint): Promise<Hex32>;
+export declare function computeNoteHashWasm(owner: bigint | Hex32, token: bigint | Hex32, amount: bigint, blinding: bigint): Promise<Hex32>;
 export declare function deriveOwnerPk(hasher: PoseidonHasher, spendingKey: bigint): Promise<Hex32>;
 export declare function noteCommitment(hasher: PoseidonHasher, ownerPk: bigint, tokenField: Hex32, amount: bigint, blinding: bigint): Promise<Hex32>;
 export declare function nullifier(hasher: PoseidonHasher, spendingKey: bigint, commitment: Hex32): Promise<Hex32>;

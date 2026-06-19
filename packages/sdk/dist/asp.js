@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BN254_FIELD_MODULUS } from "./types.js";
 import { computeIncrementalMerklePath, parseHex32, toHex32 } from "./hash.js";
+import { executeNoirWasm } from "./noir-wasm.js";
 import { resolveNoirPackage } from "./noir-packages.js";
+import { hasNargoCli, toolEnv } from "./toolchain.js";
 export const ASP_TREE_DEPTH = 10;
 export const ASP_MEMBERSHIP_DOMAIN = 2n;
 const aspLeafCache = new Map();
@@ -26,13 +28,31 @@ export function deriveMembershipBlinding(ownerPk, label = "veilum-asp-v1") {
     const field = BigInt(`0x${digest}`) % BN254_FIELD_MODULUS;
     return toHex32(field);
 }
-export function computeAspLeafViaNoir(ownerPk, membershipBlinding) {
+export async function computeAspLeafWasm(ownerPk, membershipBlinding) {
     const owner = typeof ownerPk === "bigint" ? ownerPk : parseHex32(ownerPk);
     const blinding = typeof membershipBlinding === "bigint" ? membershipBlinding : parseHex32(membershipBlinding);
     const key = `${owner}|${blinding}`;
     const cached = aspLeafCache.get(key);
     if (cached)
         return cached;
+    const result = await executeNoirWasm("hash3", {
+        a: owner.toString(),
+        b: blinding.toString(),
+        c: ASP_MEMBERSHIP_DOMAIN.toString(),
+    });
+    aspLeafCache.set(key, result);
+    return result;
+}
+export async function computeAspLeafViaNoir(ownerPk, membershipBlinding) {
+    const owner = typeof ownerPk === "bigint" ? ownerPk : parseHex32(ownerPk);
+    const blinding = typeof membershipBlinding === "bigint" ? membershipBlinding : parseHex32(membershipBlinding);
+    const key = `${owner}|${blinding}`;
+    const cached = aspLeafCache.get(key);
+    if (cached)
+        return cached;
+    if (!hasNargoCli()) {
+        return computeAspLeafWasm(ownerPk, membershipBlinding);
+    }
     const dir = mkdtempSync(join(tmpdir(), "hash3-"));
     const hash3Dir = resolveNoirPackage("hash3");
     execFileSync("cp", ["-R", hash3Dir + "/.", dir + "/"], { stdio: "pipe" });
@@ -42,7 +62,7 @@ b = "${blinding.toString()}"
 c = "${ASP_MEMBERSHIP_DOMAIN.toString()}"
 `.trimStart();
     writeFileSync(join(dir, "Prover.toml"), toml);
-    const out = execFileSync("nargo", ["execute"], { cwd: dir, encoding: "utf8" });
+    const out = execFileSync("nargo", ["execute"], { cwd: dir, encoding: "utf8", env: toolEnv() });
     const result = fieldFromNoirOutput(out);
     aspLeafCache.set(key, result);
     return result;

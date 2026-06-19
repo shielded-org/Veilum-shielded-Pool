@@ -1,4 +1,4 @@
-import { RELAYER_URL } from "./types";
+import { getServiceUrls } from "./service-urls";
 import type { ProofInputs } from "./proving";
 
 export type RelayerResponse = {
@@ -24,7 +24,8 @@ export async function submitShieldedTransferToRelayer(payload: {
   subchannel1: string;
   fee?: number;
 }): Promise<RelayerResponse> {
-  const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/relay/shielded-transfer`, {
+  const { relayerUrl } = await getServiceUrls();
+  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/relay/shielded-transfer`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -51,7 +52,8 @@ export async function submitUnshieldToRelayer(payload: {
   aspGate?: string;
   publicInputs?: string;
 }): Promise<RelayerResponse> {
-  const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/relay/unshield`, {
+  const { relayerUrl } = await getServiceUrls();
+  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/relay/unshield`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -62,7 +64,8 @@ export async function submitUnshieldToRelayer(payload: {
 }
 
 export async function fetchRelayerStatus(requestId: string): Promise<RelayerResponse> {
-  const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/relay/status/${requestId}`);
+  const { relayerUrl } = await getServiceUrls();
+  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/relay/status/${requestId}`);
   const body = (await res.json()) as RelayerResponse;
   if (!res.ok) throw new Error(body.error || `Relayer status HTTP ${res.status}`);
   return body;
@@ -92,7 +95,8 @@ export async function waitForRelayerConfirmation(
 }
 
 export async function fetchRelayerHealth(): Promise<{ ok: boolean; relayerAddress?: string }> {
-  const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/healthz`);
+  const { relayerUrl } = await getServiceUrls();
+  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/healthz`);
   if (!res.ok) return { ok: false };
   return (await res.json()) as { ok: boolean; relayerAddress?: string };
 }
@@ -102,7 +106,8 @@ export async function requestFaucetMint(payload: {
   recipient: string;
   amount: string;
 }): Promise<RelayerResponse> {
-  const res = await fetch(`${RELAYER_URL.replace(/\/$/, "")}/faucet/mint`, {
+  const { relayerUrl } = await getServiceUrls();
+  const res = await fetch(`${relayerUrl.replace(/\/$/, "")}/faucet/mint`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),

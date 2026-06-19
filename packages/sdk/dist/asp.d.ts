@@ -3,7 +3,8 @@ import type { PoseidonHasher } from "./hash.js";
 export declare const ASP_TREE_DEPTH = 10;
 export declare const ASP_MEMBERSHIP_DOMAIN = 2n;
 export declare function deriveMembershipBlinding(ownerPk: Hex32, label?: string): Hex32;
-export declare function computeAspLeafViaNoir(ownerPk: Hex32 | bigint, membershipBlinding: Hex32 | bigint): Hex32;
+export declare function computeAspLeafWasm(ownerPk: Hex32 | bigint, membershipBlinding: Hex32 | bigint): Promise<Hex32>;
+export declare function computeAspLeafViaNoir(ownerPk: Hex32 | bigint, membershipBlinding: Hex32 | bigint): Promise<Hex32>;
 export declare function aspLeaf(_hasher: {
     hash2: (a: bigint, b: bigint) => Promise<Hex32>;
 }, ownerPk: Hex32 | bigint, membershipBlinding: Hex32 | bigint): Promise<Hex32>;

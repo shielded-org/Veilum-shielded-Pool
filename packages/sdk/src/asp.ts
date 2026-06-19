@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { BN254_FIELD_MODULUS, type Hex32 } from "./types.js";
 import type { PoseidonHasher } from "./hash.js";
 import { computeIncrementalMerklePath, parseHex32, toHex32 } from "./hash.js";
+import { executeNoirWasm } from "./noir-wasm.js";
 import { resolveNoirPackage } from "./noir-packages.js";
+import { hasNargoCli, toolEnv } from "./toolchain.js";
 export const ASP_TREE_DEPTH = 10;
 export const ASP_MEMBERSHIP_DOMAIN = 2n;
 
@@ -31,16 +33,39 @@ export function deriveMembershipBlinding(ownerPk: Hex32, label = "veilum-asp-v1"
   return toHex32(field);
 }
 
-export function computeAspLeafViaNoir(
+export async function computeAspLeafWasm(
   ownerPk: Hex32 | bigint,
   membershipBlinding: Hex32 | bigint
-): Hex32 {
+): Promise<Hex32> {
   const owner = typeof ownerPk === "bigint" ? ownerPk : parseHex32(ownerPk);
   const blinding =
     typeof membershipBlinding === "bigint" ? membershipBlinding : parseHex32(membershipBlinding);
   const key = `${owner}|${blinding}`;
   const cached = aspLeafCache.get(key);
   if (cached) return cached;
+  const result = await executeNoirWasm("hash3", {
+    a: owner.toString(),
+    b: blinding.toString(),
+    c: ASP_MEMBERSHIP_DOMAIN.toString(),
+  });
+  aspLeafCache.set(key, result);
+  return result;
+}
+
+export async function computeAspLeafViaNoir(
+  ownerPk: Hex32 | bigint,
+  membershipBlinding: Hex32 | bigint
+): Promise<Hex32> {
+  const owner = typeof ownerPk === "bigint" ? ownerPk : parseHex32(ownerPk);
+  const blinding =
+    typeof membershipBlinding === "bigint" ? membershipBlinding : parseHex32(membershipBlinding);
+  const key = `${owner}|${blinding}`;
+  const cached = aspLeafCache.get(key);
+  if (cached) return cached;
+
+  if (!hasNargoCli()) {
+    return computeAspLeafWasm(ownerPk, membershipBlinding);
+  }
 
   const dir = mkdtempSync(join(tmpdir(), "hash3-"));
   const hash3Dir = resolveNoirPackage("hash3");
@@ -51,7 +76,7 @@ b = "${blinding.toString()}"
 c = "${ASP_MEMBERSHIP_DOMAIN.toString()}"
 `.trimStart();
   writeFileSync(join(dir, "Prover.toml"), toml);
-  const out = execFileSync("nargo", ["execute"], { cwd: dir, encoding: "utf8" });
+  const out = execFileSync("nargo", ["execute"], { cwd: dir, encoding: "utf8", env: toolEnv() });
   const result = fieldFromNoirOutput(out);
   aspLeafCache.set(key, result);
   return result;

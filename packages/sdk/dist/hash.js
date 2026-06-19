@@ -4,7 +4,9 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BN254_FIELD_MODULUS } from "./types.js";
+import { executeNoirWasm } from "./noir-wasm.js";
 import { resolveNoirPackage } from "./noir-packages.js";
+import { hasNargoCli } from "./toolchain.js";
 const hash2Cache = new Map();
 const noteHashCache = new Map();
 function cacheKey(values) {
@@ -48,10 +50,23 @@ right = "${right.toString()}"
     hash2Cache.set(key, result);
     return result;
 }
+export async function computeHash2Wasm(left, right) {
+    const key = cacheKey([left, right]);
+    const cached = hash2Cache.get(key);
+    if (cached)
+        return cached;
+    const result = await executeNoirWasm("hash2", {
+        left: left.toString(),
+        right: right.toString(),
+    });
+    hash2Cache.set(key, result);
+    return result;
+}
 /** Local Noir Poseidon2 — matches on-chain merkle tree and circuit (no RPC). */
 export function createLocalPoseidonHasher() {
+    const useCli = hasNargoCli();
     return {
-        hash2: async (a, b) => computeHash2ViaNoir(a, b),
+        hash2: async (a, b) => (useCli ? computeHash2ViaNoir(a, b) : computeHash2Wasm(a, b)),
         hash4: async (a, b, c, d) => computeNoteHashViaNoir(a, b, c, d),
     };
 }
@@ -84,17 +99,24 @@ export function createCliPoseidonHasher(merkleContractId, network, sourceAccount
         hash4: async (a, b, c, d) => computeNoteHashViaNoir(a, b, c, d),
     };
 }
-export function computeNoteHashViaNoir(owner, token, amount, blinding) {
+function noteHashInputs(owner, token, amount, blinding) {
     const ownerNorm = typeof owner === "bigint" ? owner : parseHex32(owner);
     const tokenNorm = typeof token === "bigint" ? token : parseHex32(token);
+    const ownerStr = typeof owner === "bigint" ? toHex32(owner) : owner;
+    const tokenStr = typeof token === "bigint" ? toHex32(token) : token;
+    return { ownerNorm, tokenNorm, ownerStr, tokenStr };
+}
+export function computeNoteHashViaNoir(owner, token, amount, blinding) {
+    const { ownerNorm, tokenNorm, ownerStr, tokenStr } = noteHashInputs(owner, token, amount, blinding);
     const key = cacheKey([ownerNorm, tokenNorm, amount, blinding]);
     const cached = noteHashCache.get(key);
     if (cached)
         return Promise.resolve(cached);
+    if (!hasNargoCli()) {
+        return computeNoteHashWasm(owner, token, amount, blinding);
+    }
     const dir = mkdtempSync(join(tmpdir(), "note-hash-"));
     execFileSync("cp", ["-R", resolveNoirPackage("note-hash") + "/.", dir + "/"], { stdio: "pipe" });
-    const ownerStr = typeof owner === "bigint" ? owner.toString() : owner;
-    const tokenStr = typeof token === "bigint" ? token.toString() : token;
     const toml = `
 owner = "${ownerStr}"
 token = "${tokenStr}"
@@ -106,6 +128,21 @@ blinding = "${blinding}"
     const result = fieldFromNoirOutput(out);
     noteHashCache.set(key, result);
     return Promise.resolve(result);
+}
+export async function computeNoteHashWasm(owner, token, amount, blinding) {
+    const { ownerNorm, tokenNorm, ownerStr, tokenStr } = noteHashInputs(owner, token, amount, blinding);
+    const key = cacheKey([ownerNorm, tokenNorm, amount, blinding]);
+    const cached = noteHashCache.get(key);
+    if (cached)
+        return cached;
+    const result = await executeNoirWasm("note-hash", {
+        owner: ownerStr,
+        token: tokenStr,
+        amount: amount.toString(),
+        blinding: blinding.toString(),
+    });
+    noteHashCache.set(key, result);
+    return result;
 }
 export async function deriveOwnerPk(hasher, spendingKey) {
     return hasher.hash2(spendingKey, 1n);

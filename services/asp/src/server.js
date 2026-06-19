@@ -33,6 +33,9 @@ import { createAspSorobanReader, resolveAspSourceAddress } from "./soroban-read.
 import { bytes32ScVal, createSorobanSubmitter } from "./soroban-submit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+if (!process.env.CIRCUIT_ARTIFACTS_DIR) {
+  process.env.CIRCUIT_ARTIFACTS_DIR = path.join(__dirname, "..", "artifacts");
+}
 const ASP_ROOT = path.resolve(__dirname, "..");
 const ENV_PATH = path.join(ASP_ROOT, ".env");
 if (existsSync(ENV_PATH)) {
@@ -424,8 +427,8 @@ const server = http.createServer(async (req, res) => {
       }
       const leafIndex = approved.leafIndex ?? 0;
       const chain = getCanonicalMembershipChain(db, ASP_MEMBERSHIP, leafIndex);
-      const leafHashes = chain.map((m) =>
-        computeAspLeafViaNoir(m.ownerPk, m.membershipBlinding)
+      const leafHashes = await Promise.all(
+        chain.map((m) => computeAspLeafViaNoir(m.ownerPk, m.membershipBlinding))
       );
       const hasher = createLocalPoseidonHasher();
       const pathInfo = await buildAspMembershipPath(hasher, leafHashes, leafIndex);

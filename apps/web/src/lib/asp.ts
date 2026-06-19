@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha256";
 
-import { ASP_ADMIN_TOKEN, ASP_URL, type Hex32 } from "./types";
+import { getServiceUrls } from "./service-urls";
+import { ASP_ADMIN_TOKEN, type Hex32 } from "./types";
 import { BN254_FIELD_MODULUS } from "./types";
 import { toHex32 } from "./utils";
 
@@ -39,12 +40,13 @@ export type AspRecord = {
   lastScan?: AspScanResult;
 };
 
-function aspBase() {
-  return ASP_URL.replace(/\/$/, "");
+async function aspBase() {
+  const { aspUrl } = await getServiceUrls();
+  return aspUrl.replace(/\/$/, "");
 }
 
 export async function fetchAspStatus(ownerPk: Hex32): Promise<AspRecord> {
-  const res = await fetch(`${aspBase()}/asp/status/${encodeURIComponent(ownerPk)}`);
+  const res = await fetch(`${await aspBase()}/asp/status/${encodeURIComponent(ownerPk)}`);
   if (!res.ok) throw new Error(`ASP status failed (${res.status})`);
   const data = (await res.json()) as { status: AspStatus; record?: Partial<AspRecord> };
   return {
@@ -63,7 +65,7 @@ export async function registerAspMembership(
   stellarAddress?: string,
   tokenContractId?: string
 ): Promise<{ ok: boolean; status: AspStatus }> {
-  const res = await fetch(`${aspBase()}/asp/register`, {
+  const res = await fetch(`${await aspBase()}/asp/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ownerPk, stellarAddress, tokenContractId }),
@@ -80,7 +82,7 @@ export async function screenAspMembership(
   stellarAddress: string,
   tokenContractId?: string
 ): Promise<AspScreenResponse> {
-  const res = await fetch(`${aspBase()}/asp/screen`, {
+  const res = await fetch(`${await aspBase()}/asp/screen`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ownerPk, stellarAddress, tokenContractId }),
@@ -120,7 +122,7 @@ export async function ensureAspMembership(
 export async function fetchAspPending(adminToken = ASP_ADMIN_TOKEN): Promise<
   Array<{ id: string; ownerPk: Hex32; membershipBlinding: Hex32; createdAt: string }>
 > {
-  const res = await fetch(`${aspBase()}/asp/pending`, {
+  const res = await fetch(`${await aspBase()}/asp/pending`, {
     headers: { authorization: `Bearer ${adminToken}` },
   });
   if (!res.ok) throw new Error(`ASP pending list failed (${res.status})`);
@@ -135,7 +137,7 @@ export async function approveAspMembership(
   adminToken = ASP_ADMIN_TOKEN,
   membershipBlinding?: Hex32
 ) {
-  const res = await fetch(`${aspBase()}/asp/approve`, {
+  const res = await fetch(`${await aspBase()}/asp/approve`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -149,7 +151,7 @@ export async function approveAspMembership(
 }
 
 export async function denyAspMembership(ownerPk: Hex32, adminToken = ASP_ADMIN_TOKEN) {
-  const res = await fetch(`${aspBase()}/asp/deny`, {
+  const res = await fetch(`${await aspBase()}/asp/deny`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -190,7 +192,7 @@ export async function fetchAspMembershipPath(ownerPk: Hex32): Promise<{
   siblings: Hex32[];
   directions: boolean[];
 }> {
-  const res = await fetch(`${aspBase()}/asp/path/${encodeURIComponent(ownerPk)}`);
+  const res = await fetch(`${await aspBase()}/asp/path/${encodeURIComponent(ownerPk)}`);
   const body = (await res.json()) as {
     ok: boolean;
     error?: string;

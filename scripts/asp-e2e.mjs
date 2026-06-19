@@ -589,7 +589,7 @@ async function main() {
   if (approved.status !== "approved") throw new Error(`ASP screen failed: ${approved.error}`);
   console.log("ASP approved via on-chain scan:", approved);
 
-  const aspLeaves = [computeAspLeafViaNoir(ownerPkHex, membershipBlinding)];
+  const aspLeaves = [await computeAspLeafViaNoir(ownerPkHex, membershipBlinding)];
   const aspPath = await buildAspMembershipPath(hasher, aspLeaves, approved.leafIndex ?? 0);
 
   const usdc = deployment.tokens.USDC;
@@ -754,8 +754,8 @@ async function main() {
   const taiwoApproved = await screenAspMembership(ASP_URL, taiwoOwnerPkHex, recipientAddr);
   if (taiwoApproved.status !== "approved") throw new Error(`Taiwo ASP screen failed: ${taiwoApproved.error}`);
   const taiwoAspLeaves = [
-    computeAspLeafViaNoir(ownerPkHex, membershipBlinding),
-    computeAspLeafViaNoir(taiwoOwnerPkHex, taiwoMembershipBlinding),
+    await computeAspLeafViaNoir(ownerPkHex, membershipBlinding),
+    await computeAspLeafViaNoir(taiwoOwnerPkHex, taiwoMembershipBlinding),
   ];
   const taiwoAspPath = await buildAspMembershipPath(
     hasher,
