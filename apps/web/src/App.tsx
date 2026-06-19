@@ -20,11 +20,16 @@ export function App() {
     <BrowserRouter>
       <ToastContainer
         position="bottom-right"
-        autoClose={6000}
+        autoClose={8000}
         newestOnTop
         closeOnClick
         pauseOnFocusLoss
-        theme="colored"
+        draggable
+        theme="dark"
+        hideProgressBar={false}
+        icon={false}
+        toastClassName="veilum-toast"
+        progressClassName="veilum-toast__progress"
         className="veilum-toast-container"
       />
       <Routes>
