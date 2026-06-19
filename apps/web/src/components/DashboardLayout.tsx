@@ -5,17 +5,23 @@ import { ConnectPrompt } from "./ui/ConnectPrompt";
 import { NetworkBadge } from "./ui/NetworkBadge";
 import { OnboardingResumeLink, OnboardingWizard } from "./ui/OnboardingWizard";
 import { PageHeader } from "./ui/PageHeader";
-import { IconArrowRightCircle, IconHome, IconKey, IconList, IconUploadCloud, IconVeilumMark } from "./ui/icons";
+import { ServiceStatusPill } from "./ui/ServiceStatusPill";
+import { IconArrowRightCircle, IconHome, IconKey, IconList, IconLock, IconUploadCloud, IconVeilumMark } from "./ui/icons";
+import { useWallet } from "../hooks/use-wallet";
+import { isAspOperator } from "../lib/asp-admin";
 import { DASHBOARD_PAGE_META, dashboardNavGroups } from "../lib/dashboard-routes";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 export function DashboardLayout() {
   useShieldedSync();
   const location = useLocation();
+  const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
   const notes = useShieldedStore((s) => s.notes);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
+  const relayerOk = useShieldedStore((s) => s.relayerOk);
   const isTestnet = network === "testnet" || network === "futurenet" || network === "local";
+  const showAspOperator = isTestnet && isAspOperator(wallet);
 
   const pageMeta = DASHBOARD_PAGE_META[location.pathname] ?? DASHBOARD_PAGE_META["/dashboard"];
   const navGroups = dashboardNavGroups(isTestnet);
@@ -31,7 +37,7 @@ export function DashboardLayout() {
 
   const description =
     location.pathname === "/dashboard/notes" && !scanLoading && notes.length > 0
-      ? `${pageMeta.description} · ${notes.filter((n) => !n.spent).length} unspent`
+      ? `${pageMeta.description} · ${notes.filter((n) => !n.spent).length} available`
       : pageMeta.description;
 
   const bottomNav = [
@@ -68,6 +74,12 @@ export function DashboardLayout() {
 
         <div className="dashboard-sidebar__footer">
           <OnboardingResumeLink />
+          {showAspOperator ? (
+            <Link to="/dashboard/asp" className="dashboard-sidebar__operator">
+              <IconLock size={18} />
+              <span className="nav-label">ASP operator</span>
+            </Link>
+          ) : null}
           <Link to="/">
             <IconHome size={18} />
             <span className="nav-label">Back to site</span>
@@ -88,6 +100,7 @@ export function DashboardLayout() {
             </ol>
           </div>
           <div className="dashboard-topbar__actions">
+            <ServiceStatusPill online={relayerOk} />
             <NetworkBadge network={network} />
             <ConnectWallet />
           </div>
