@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { buildOrderedLeavesFromPool } from "./merkle-rebuild.js";
+
 function eventKey(ev) {
   if (ev.id) return ev.id;
   return `${ev.txHash}:${ev.ledger}:${ev.transactionIndex}:${ev.operationIndex}`;
@@ -43,6 +45,9 @@ export function createEventStore(dataDir) {
         lastIndexedLedger: pool.lastIndexedLedger ?? null,
         eventCount: events.length,
         oldestStoredLedger: oldestLedger,
+        merkleLeafCount: pool.merkleLeafCount ?? pool.orderedLeaves?.length ?? 0,
+        merkleTxCount: pool.merkleTxCount ?? null,
+        merkleMissingTxCount: pool.merkleMissingTxCount ?? null,
         updatedAt: pool.updatedAt ?? null,
       };
     },
@@ -76,10 +81,76 @@ export function createEventStore(dataDir) {
         deployLedger: deployLedger ?? data.pools[poolId]?.deployLedger ?? null,
         lastIndexedLedger,
         events: merged,
+        txLeaves: data.pools[poolId]?.txLeaves ?? {},
+        orderedLeaves: data.pools[poolId]?.orderedLeaves ?? [],
+        merkleLeafCount: data.pools[poolId]?.merkleLeafCount ?? 0,
+        merkleTxCount: data.pools[poolId]?.merkleTxCount ?? 0,
+        merkleMissingTxCount: data.pools[poolId]?.merkleMissingTxCount ?? 0,
         updatedAt: new Date().toISOString(),
       };
       save(data);
       return data.pools[poolId];
+    },
+
+    mergeTxLeaves(poolId, txHash, leaves) {
+      if (!leaves?.length) return;
+      const data = load();
+      const pool = data.pools[poolId];
+      if (!pool) return;
+      const txLeaves = { ...(pool.txLeaves ?? {}) };
+      if (!txLeaves[txHash]) {
+        txLeaves[txHash] = leaves;
+        data.pools[poolId] = { ...pool, txLeaves, updatedAt: new Date().toISOString() };
+        save(data);
+      }
+    },
+
+    getTxLeaves(poolId, txHashes) {
+      const pool = this.getPool(poolId);
+      const map = pool?.txLeaves ?? {};
+      const out = {};
+      for (const hash of txHashes) {
+        if (map[hash]?.length) out[hash] = map[hash];
+      }
+      return out;
+    },
+
+    getAllTxLeaves(poolId) {
+      const pool = this.getPool(poolId);
+      return pool?.txLeaves ?? {};
+    },
+
+    rebuildOrderedMerkleLeaves(poolId) {
+      const data = load();
+      const pool = data.pools[poolId];
+      if (!pool) return null;
+
+      const built = buildOrderedLeavesFromPool(pool);
+      data.pools[poolId] = {
+        ...pool,
+        orderedLeaves: built.leaves,
+        merkleLeafCount: built.leafCount,
+        merkleTxCount: built.txCount,
+        merkleMissingTxCount: built.missingTxCount,
+        updatedAt: new Date().toISOString(),
+      };
+      save(data);
+      return built;
+    },
+
+    getOrderedMerkleLeaves(poolId) {
+      const pool = this.getPool(poolId);
+      if (!pool) return null;
+      if (pool.orderedLeaves?.length) {
+        return {
+          leaves: pool.orderedLeaves,
+          leafCount: pool.merkleLeafCount ?? pool.orderedLeaves.length,
+          txCount: pool.merkleTxCount ?? 0,
+          missingTxCount: pool.merkleMissingTxCount ?? 0,
+          lastIndexedLedger: pool.lastIndexedLedger ?? null,
+        };
+      }
+      return this.rebuildOrderedMerkleLeaves(poolId);
     },
   };
 }

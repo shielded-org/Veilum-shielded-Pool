@@ -43,6 +43,8 @@ function loadDeploymentDefaults() {
 
 const deployment = loadDeploymentDefaults();
 const POOL_ID = process.env.INDEXER_POOL_ID || deployment.shieldedPool || null;
+const ASP_GATE_ID = process.env.INDEXER_ASP_GATE_ID || deployment.aspGate || null;
+const HORIZON_URL = process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org";
 const DEPLOY_LEDGER = Number(process.env.INDEXER_DEPLOY_LEDGER || deployment.deployLedger || 0) || null;
 
 const store = createEventStore(DATA_DIR);
@@ -59,6 +61,8 @@ async function runIndex() {
       deployLedger: DEPLOY_LEDGER,
       rpcUrls: [RPC_URL, ...RPC_FALLBACKS],
       store,
+      aspGateId: ASP_GATE_ID,
+      horizonUrl: HORIZON_URL,
     });
     lastIndexError = null;
     lastIndexAt = new Date().toISOString();
@@ -132,6 +136,33 @@ const server = http.createServer(async (req, res) => {
       count: events.length,
       events,
     });
+    return;
+  }
+
+  const leavesMatch = url.pathname.match(/^\/pool\/([^/]+)\/tx-leaves$/);
+  if (leavesMatch) {
+    const poolId = decodeURIComponent(leavesMatch[1]);
+    const txParam = url.searchParams.get("txHashes") ?? "";
+    const txHashes = txParam.split(",").map((s) => s.trim()).filter(Boolean);
+    if (txHashes.length === 0) {
+      const all = store.getAllTxLeaves(poolId);
+      sendJson(res, 200, { poolId, txHashes: Object.keys(all).length, leaves: all });
+      return;
+    }
+    const leaves = store.getTxLeaves(poolId, txHashes);
+    sendJson(res, 200, { poolId, txHashes: txHashes.length, leaves });
+    return;
+  }
+
+  const merkleMatch = url.pathname.match(/^\/pool\/([^/]+)\/merkle-leaves$/);
+  if (merkleMatch) {
+    const poolId = decodeURIComponent(merkleMatch[1]);
+    const snapshot = store.getOrderedMerkleLeaves(poolId);
+    if (!snapshot) {
+      sendJson(res, 404, { error: "pool_not_indexed" });
+      return;
+    }
+    sendJson(res, 200, { poolId, ...snapshot });
     return;
   }
 

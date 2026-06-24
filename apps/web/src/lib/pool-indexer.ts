@@ -1,10 +1,8 @@
+import type { Api } from "@stellar/stellar-sdk";
 import { xdr } from "@stellar/stellar-sdk";
-import { rpc } from "@stellar/stellar-sdk";
 
 import type { RpcLedgerWindow } from "./rpc-events";
 import { getServiceUrls } from "./service-urls";
-
-const { Api } = rpc;
 
 export type IndexedPoolEventRow = {
   type?: string;
@@ -64,6 +62,71 @@ export async function fetchIndexerPoolEvents(
   }
   const body = (await res.json()) as { events?: IndexedPoolEventRow[] };
   return (body.events ?? []).map(hydrateEvent);
+}
+
+/** Cached merkle leaf commitments per tx (from indexer). */
+export async function fetchIndexerTxLeaves(
+  poolId: string,
+  txHashes: string[]
+): Promise<Record<string, string[]>> {
+  if (txHashes.length === 0) return {};
+  const chunks: string[][] = [];
+  const CHUNK = 24;
+  for (let i = 0; i < txHashes.length; i += CHUNK) {
+    chunks.push(txHashes.slice(i, i + CHUNK));
+  }
+  const merged: Record<string, string[]> = {};
+  try {
+    const { indexerUrl } = await getServiceUrls();
+    for (const chunk of chunks) {
+      const url = new URL(`${indexerUrl}/pool/${encodeURIComponent(poolId)}/tx-leaves`);
+      url.searchParams.set("txHashes", chunk.join(","));
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      if (!res.ok) continue;
+      const body = (await res.json()) as { leaves?: Record<string, string[]> };
+      Object.assign(merged, body.leaves ?? {});
+    }
+  } catch {
+    /* indexer optional */
+  }
+  return merged;
+}
+
+/** Full per-tx merkle leaf map stored by the indexer. */
+export async function fetchIndexerAllTxLeaves(poolId: string): Promise<Record<string, string[]>> {
+  try {
+    const { indexerUrl } = await getServiceUrls();
+    const url = `${indexerUrl}/pool/${encodeURIComponent(poolId)}/tx-leaves`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return {};
+    const body = (await res.json()) as { leaves?: Record<string, string[]> };
+    return body.leaves ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export type IndexerOrderedMerkle = {
+  leaves: string[];
+  leafCount: number;
+  txCount: number;
+  missingTxCount: number;
+  lastIndexedLedger: number | null;
+};
+
+/** Ordered merkle leaf list rebuilt and cached by the indexer. */
+export async function fetchIndexerOrderedMerkleLeaves(
+  poolId: string
+): Promise<IndexerOrderedMerkle | null> {
+  try {
+    const { indexerUrl } = await getServiceUrls();
+    const url = `${indexerUrl}/pool/${encodeURIComponent(poolId)}/merkle-leaves`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as IndexerOrderedMerkle;
+  } catch {
+    return null;
+  }
 }
 
 /** Events below the live RPC retention window (archived by the indexer). */

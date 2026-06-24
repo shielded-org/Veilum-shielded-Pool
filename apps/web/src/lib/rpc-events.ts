@@ -180,7 +180,7 @@ export function clearEventsRpcCache(): void {
 }
 
 /** Soroban RPC may return empty event pages while the cursor still has newer ledgers. */
-export const MAX_CONTRACT_EVENT_PAGES = 128;
+export const MAX_CONTRACT_EVENT_PAGES = 512;
 export const MAX_EMPTY_CONTRACT_EVENT_PAGES = 16;
 
 export type ContractEventFilter = {

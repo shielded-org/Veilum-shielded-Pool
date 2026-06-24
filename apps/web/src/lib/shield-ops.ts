@@ -26,8 +26,7 @@ import {
 import { findLeafIndex, syncMerkleLeavesValidated } from "./merkle-sync";
 import { merkleDebug, merkleDebugWarn } from "./merkle-debug";
 import { resolvePoolStartLedger } from "./pool-ledger";
-import { tryFetchHistoryGapEvents } from "./pool-indexer";
-import { historyGapBeforeWindow } from "./rpc-events";
+import { prepareMerkleIndexerCache } from "./merkle-prepare";
 import { generateUltraHonkProof, packTransferMeta, type ProofInputs } from "./proving";
 import { generateAspUltraHonkProof } from "./proving-asp";
 import {
@@ -67,15 +66,11 @@ async function resolveMerkleSpendPath(params: {
     shieldedPool,
     params.config.contracts.deployLedger
   );
-  let archivedEvents: Awaited<ReturnType<typeof tryFetchHistoryGapEvents>>["events"] = [];
-  if (historyGapBeforeWindow(params.config.contracts.deployLedger, window)) {
-    const gap = await tryFetchHistoryGapEvents(
-      shieldedPool,
-      params.config.contracts.deployLedger,
-      window
-    );
-    archivedEvents = gap.events;
-  }
+  const indexerCache = await prepareMerkleIndexerCache(
+    shieldedPool,
+    params.config.contracts.deployLedger,
+    window
+  );
 
   const zero = `0x${"00".repeat(32)}` as Hex32;
   const [onChainH00, localH00] = await Promise.all([
@@ -129,7 +124,11 @@ async function resolveMerkleSpendPath(params: {
       hasher,
     },
     window,
-    archivedEvents
+    {
+      archivedEvents: indexerCache.archivedEvents,
+      archivedTxLeaves: indexerCache.archivedTxLeaves,
+      indexerOrderedLeaves: indexerCache.orderedLeaves,
+    }
   );
 
   const leafIndex = resolveLeafIndex(synced.leaves);
@@ -632,10 +631,33 @@ export async function fetchMerkleLeaves(
   const hasher = await getBrowserPoseidonHasher();
   const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
   const scanStart = startLedger ?? resolved.startLedger;
-  let archivedEvents = options?.archivedEvents;
-  if (archivedEvents === undefined && historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
-    const gap = await tryFetchHistoryGapEvents(poolId, config.contracts.deployLedger, resolved.window);
-    archivedEvents = gap.events;
+  let merkleExtras: {
+    archivedEvents: SorobanApi.EventResponse[];
+    archivedTxLeaves: Record<string, Hex32[]>;
+    indexerOrderedLeaves: Hex32[] | null;
+  };
+  if (options?.archivedEvents) {
+    const indexerCache = await prepareMerkleIndexerCache(
+      poolId,
+      config.contracts.deployLedger,
+      resolved.window
+    );
+    merkleExtras = {
+      archivedEvents: options.archivedEvents,
+      archivedTxLeaves: indexerCache.archivedTxLeaves,
+      indexerOrderedLeaves: indexerCache.orderedLeaves,
+    };
+  } else {
+    const indexerCache = await prepareMerkleIndexerCache(
+      poolId,
+      config.contracts.deployLedger,
+      resolved.window
+    );
+    merkleExtras = {
+      archivedEvents: indexerCache.archivedEvents,
+      archivedTxLeaves: indexerCache.archivedTxLeaves,
+      indexerOrderedLeaves: indexerCache.orderedLeaves,
+    };
   }
   const synced = await syncMerkleLeavesValidated(
     resolved.eventsRpc,
@@ -655,7 +677,7 @@ export async function fetchMerkleLeaves(
       hasher,
     },
     resolved.window,
-    archivedEvents ?? []
+    merkleExtras
   );
   return synced.leaves;
 }

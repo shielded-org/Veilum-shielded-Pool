@@ -1,8 +1,10 @@
 import { rpc } from "@stellar/stellar-sdk";
 
+import { extractMerkleLeavesFromEnvelope, fetchTxEnvelope } from "./merkle-extract.js";
+
 const { Server: SorobanRpc } = rpc;
 
-const MAX_PAGES = 128;
+const MAX_PAGES = 512;
 const MAX_EMPTY_PAGES = 16;
 const PAGE_LIMIT = 200;
 
@@ -73,7 +75,14 @@ function serializeEvent(ev) {
 /**
  * Tail pool contract events from RPC and return newly seen rows.
  */
-export async function indexPoolEvents({ poolId, deployLedger, rpcUrls, store }) {
+export async function indexPoolEvents({
+  poolId,
+  deployLedger,
+  rpcUrls,
+  store,
+  aspGateId,
+  horizonUrl,
+}) {
   const urls = uniqueRpcUrls(rpcUrls[0], rpcUrls.slice(1));
   let rpcClient = null;
   let latest = 0;
@@ -116,6 +125,25 @@ export async function indexPoolEvents({ poolId, deployLedger, rpcUrls, store }) 
   const serialized = raw.map(serializeEvent);
   const pool = store.mergeEvents(poolId, deployLedger, serialized, latest);
 
+  const knownLeaves = pool.txLeaves ?? {};
+  const seenTx = new Set(Object.keys(knownLeaves));
+  for (const ev of pool.events ?? []) {
+    if (seenTx.has(ev.txHash)) continue;
+    seenTx.add(ev.txHash);
+    const fetched = await fetchTxEnvelope(
+      [rpcUrlUsed, ...urls.filter((u) => u !== rpcUrlUsed)],
+      horizonUrl,
+      ev.txHash
+    );
+    if (!fetched?.envelopeXdr) continue;
+    const leaves = extractMerkleLeavesFromEnvelope(fetched.envelopeXdr, poolId, aspGateId);
+    if (leaves.length > 0) {
+      store.mergeTxLeaves(poolId, ev.txHash, leaves);
+    }
+  }
+
+  const merkle = store.rebuildOrderedMerkleLeaves(poolId);
+
   return {
     rpcUrl: rpcUrlUsed,
     scanFrom,
@@ -124,5 +152,7 @@ export async function indexPoolEvents({ poolId, deployLedger, rpcUrls, store }) 
     fetched: serialized.length,
     total: pool.events.length,
     lastIndexedLedger: pool.lastIndexedLedger,
+    merkleLeafCount: merkle?.leafCount ?? 0,
+    merkleMissingTxCount: merkle?.missingTxCount ?? 0,
   };
 }

@@ -37,7 +37,27 @@ export async function loadNetworkConfig(name: NetworkName = "testnet"): Promise<
   const deployment = await loadDeployment();
   const base = networks[name];
   if (!base) throw new Error(`Unknown network: ${name}`);
-  return { ...base, contracts: deployment };
+  const config: NetworkConfig = { ...base, contracts: deployment };
+  if (!config.horizonUrl) {
+    config.horizonUrl = defaultHorizonUrl(name);
+  }
+  return config;
+}
+
+const HORIZON_DEFAULTS: Record<NetworkName, string> = {
+  local: "http://localhost:8000",
+  testnet: "https://horizon-testnet.stellar.org",
+  futurenet: "https://horizon-futurenet.stellar.org",
+  mainnet: "https://horizon.stellar.org",
+};
+
+/** Ensure merkle tx recovery always has a Horizon archive endpoint. */
+export function defaultHorizonUrl(network: NetworkName = "testnet"): string {
+  return HORIZON_DEFAULTS[network] ?? HORIZON_DEFAULTS.testnet;
+}
+
+export function resolveHorizonUrl(config: NetworkConfig, network: NetworkName = "testnet"): string {
+  return config.horizonUrl?.trim() || defaultHorizonUrl(network);
 }
 
 export async function tokenFieldFromContractId(contractId: string): Promise<`0x${string}`> {
