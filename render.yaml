@@ -2,7 +2,7 @@
 # Dashboard: New > Blueprint > connect repo > path: render.yaml
 #
 # After deploy, confirm the public URL matches apps/web/vercel.json:
-#   /api/indexer → https://veilum-shielded-indexer.onrender.com
+#   /api/indexer → https://veilum-shielded-indexer.fly.dev
 #
 # Persistent disk (below) keeps archived events across deploys. On free tier,
 # remove the `disk` block and set INDEXER_DATA_DIR=./data (data resets on restart).

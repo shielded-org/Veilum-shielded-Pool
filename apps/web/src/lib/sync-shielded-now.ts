@@ -22,7 +22,7 @@ function applyRefreshResult(
   }
   state.setMerkleLeaves(result.merkleLeaves);
   state.setSyncWarnings(result.warnings);
-  state.setSyncError(result.warnings.length ? result.warnings.join(" · ") : null);
+  // syncError is for thrown failures only — warnings render as non-blocking banners
   if (cacheKey) {
     state.setScanCacheEntry(cacheKey, result.scanCacheOut);
   }

@@ -23,6 +23,7 @@
     "dev:web": "npm run dev --workspace @stellar-shielded/web",
     "dev:relayer": "npm run dev --workspace @stellar-shielded/relayer",
     "dev:indexer": "npm run dev --workspace @stellar-shielded/indexer",
+    "deploy:indexer": "fly deploy --config fly.indexer.toml",
     "e2e:devnet": "node scripts/devnet-e2e.mjs",
     "e2e:asp": "node scripts/asp-e2e.mjs",
     "e2e:local": "STELLAR_NETWORK=local node scripts/devnet-e2e.mjs",

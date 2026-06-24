@@ -8,8 +8,11 @@ export function humanizeSyncError(message: string): string {
   if (m.includes("transaction hash") || m.includes("no valid on-chain")) {
     return "This transfer didn't go through. No funds moved.";
   }
-  if (m.includes("relayer") && m.includes("offline")) {
-    return "The network relayer is offline. Private sends and withdrawals are unavailable.";
+  if (m.includes("indexer unreachable") || m.includes("/api/indexer")) {
+    return "Can't reach the pool indexer — archived notes may be missing until it's back online.";
+  }
+  if (m.includes("predates rpc") || m.includes("cannot be recovered")) {
+    return "Some older pool activity isn't in RPC history. The indexer may still be catching up.";
   }
   return message;
 }

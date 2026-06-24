@@ -15,7 +15,7 @@
     },
     {
       "source": "/api/indexer/:path*",
-      "destination": "https://veilum-shielded-indexer.onrender.com/:path*"
+      "destination": "https://veilum-shielded-indexer.fly.dev/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

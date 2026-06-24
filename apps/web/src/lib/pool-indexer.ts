@@ -74,10 +74,22 @@ export async function tryFetchHistoryGapEvents(
   if (!deployLedger || deployLedger <= 0 || deployLedger >= window.oldest) {
     return { events: [], reachable: true };
   }
+  const cacheKey = `${poolId}:${deployLedger}:${window.oldest}`;
+  const hit = gapCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < GAP_CACHE_TTL_MS) {
+    return hit.result;
+  }
   try {
     const events = await fetchIndexerPoolEvents(poolId, deployLedger, window.oldest - 1);
-    return { events, reachable: true };
+    const result = { events, reachable: true };
+    gapCache.set(cacheKey, { at: Date.now(), result });
+    return result;
   } catch {
-    return { events: [], reachable: false };
+    const result = { events: [], reachable: false };
+    gapCache.set(cacheKey, { at: Date.now(), result });
+    return result;
   }
 }
+
+const GAP_CACHE_TTL_MS = 30_000;
+const gapCache = new Map<string, { at: number; result: { events: Api.EventResponse[]; reachable: boolean } }>();

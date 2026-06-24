@@ -624,15 +624,16 @@ export async function fetchMerkleLeaves(
   config: NetworkConfig,
   wallet: string,
   startLedger?: number,
-  onStatus?: (msg: string) => void
+  onStatus?: (msg: string) => void,
+  options?: { archivedEvents?: SorobanApi.EventResponse[] }
 ): Promise<Hex32[]> {
   const poolId = config.contracts.shieldedPool;
   const merkleId = config.contracts.merkleTree;
   const hasher = await getBrowserPoseidonHasher();
   const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
   const scanStart = startLedger ?? resolved.startLedger;
-  let archivedEvents: Awaited<ReturnType<typeof tryFetchHistoryGapEvents>>["events"] = [];
-  if (historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
+  let archivedEvents = options?.archivedEvents;
+  if (archivedEvents === undefined && historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
     const gap = await tryFetchHistoryGapEvents(poolId, config.contracts.deployLedger, resolved.window);
     archivedEvents = gap.events;
   }
@@ -654,7 +655,7 @@ export async function fetchMerkleLeaves(
       hasher,
     },
     resolved.window,
-    archivedEvents
+    archivedEvents ?? []
   );
   return synced.leaves;
 }

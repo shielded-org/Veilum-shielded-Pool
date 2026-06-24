@@ -82,13 +82,9 @@ export async function refreshShieldedWallet(params: {
       archivedGapEvents = gap.events;
       if (!gap.reachable) {
         warnings.push(
-          `Pool deploy ledger ${config.contracts.deployLedger} predates RPC event history (oldest ${resolved.window.oldest}). Start the pool indexer to archive events before they fall off RPC.`
+          `Pool indexer unreachable — notes before RPC ledger ${resolved.window.oldest} may be missing. Check /api/indexer is proxied to Fly.`
         );
-      } else if (gap.events.length === 0) {
-        warnings.push(
-          `No archived pool events for ledgers ${config.contracts.deployLedger}–${resolved.window.oldest - 1}. Shields in that window may be unrecoverable if the indexer was not running then.`
-        );
-      } else {
+      } else if (gap.events.length > 0) {
         scanDebug("refresh:indexerGap", {
           from: config.contracts.deployLedger,
           to: resolved.window.oldest - 1,
@@ -241,12 +237,16 @@ export async function refreshShieldedWallet(params: {
   const syncMerkle = params.syncMerkle ?? false;
   if (syncMerkle) {
     try {
-      merkleLeaves = await fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined);
+      merkleLeaves = await fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined, undefined, {
+        archivedEvents: archivedGapEvents,
+      });
     } catch (e) {
       warnings.push(`Merkle sync failed: ${errMsg(e)}`);
     }
   } else {
-    void fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined)
+    void fetchMerkleLeaves(config, params.wallet, poolDeployLedger ?? undefined, undefined, {
+      archivedEvents: archivedGapEvents,
+    })
       .then((leaves) => {
         const state = useShieldedStore.getState();
         state.setMerkleLeaves(leaves);

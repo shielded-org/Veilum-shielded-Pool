@@ -1,0 +1,37 @@
+# Fly.io — pool events indexer
+# Deploy:  cd privacy && fly deploy --config fly.indexer.toml
+
+app = "veilum-shielded-indexer"
+primary_region = "iad"
+
+[build]
+  dockerfile = "services/indexer/Dockerfile"
+
+[env]
+  PORT = "8080"
+  INDEXER_HOST = "0.0.0.0"
+  INDEXER_DATA_DIR = "/data"
+  INDEXER_POLL_MS = "60000"
+  STELLAR_NETWORK = "testnet"
+  STELLAR_RPC_URL = "https://soroban-testnet.stellar.org:443"
+  STELLAR_RPC_FALLBACK_URLS = "https://soroban-rpc.testnet.stellar.gateway.fm,https://rpc.ankr.com/stellar_testnet_soroban"
+  INDEXER_POOL_ID = "CBU6QJ7H2LH2IFZUNTPVBH6637JXOADXVIZTGOLIFGKJREAB6R2AY7D4"
+  INDEXER_DEPLOY_LEDGER = "3138857"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "10s"
+
+[mounts]
+  source = "indexer_data"
+  destination = "/data"
