@@ -96,6 +96,16 @@ export function mergeNotes(existing: DecryptedNote[], scanned: DecryptedNote[]):
   return Array.from(byCommitment.values());
 }
 
+/** After a spend tx: mark source note spent and merge change output locally. */
+export function applyNoteSpendOutcome(
+  existing: DecryptedNote[],
+  spentNoteId: string,
+  changeNote?: DecryptedNote
+): DecryptedNote[] {
+  const marked = existing.map((n) => (n.id === spentNoteId ? { ...n, spent: true } : n));
+  return changeNote ? mergeNotes(marked, [changeNote]) : marked;
+}
+
 export function shieldedTotal(notes: DecryptedNote[]): bigint {
   return notes.filter((n) => !n.spent).reduce((sum, n) => sum + n.amount, 0n);
 }

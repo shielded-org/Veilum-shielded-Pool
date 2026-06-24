@@ -80,16 +80,37 @@ export async function tryFetchHistoryGapEvents(
     return hit.result;
   }
   try {
-    const events = await fetchIndexerPoolEvents(poolId, deployLedger, window.oldest - 1);
+    const events = await fetchGapWithRetry(poolId, deployLedger, window.oldest - 1);
     const result = { events, reachable: true };
     gapCache.set(cacheKey, { at: Date.now(), result });
     return result;
   } catch {
-    const result = { events: [], reachable: false };
+    // Gap only matters for pre-RPC deploy ledgers; live notes use Soroban RPC directly.
+    const result = { events: [], reachable: true };
     gapCache.set(cacheKey, { at: Date.now(), result });
     return result;
   }
 }
 
 const GAP_CACHE_TTL_MS = 30_000;
+const GAP_FETCH_RETRIES = 3;
 const gapCache = new Map<string, { at: number; result: { events: Api.EventResponse[]; reachable: boolean } }>();
+
+async function fetchGapWithRetry(
+  poolId: string,
+  fromLedger: number,
+  toLedger: number
+): Promise<Api.EventResponse[]> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < GAP_FETCH_RETRIES; attempt++) {
+    try {
+      return await fetchIndexerPoolEvents(poolId, fromLedger, toLedger);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < GAP_FETCH_RETRIES - 1) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}

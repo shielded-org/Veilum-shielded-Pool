@@ -15,7 +15,7 @@ function applyRefreshResult(
   if (result.mode === "full") {
     state.setNotes(result.notes);
     state.setShieldedBalance(result.shieldedBalance);
-  } else if (result.notes.length > 0) {
+  } else {
     const merged = mergeNotes(state.notes, result.notes);
     state.setNotes(merged);
     state.setShieldedBalance(shieldedTotal(merged));
@@ -61,7 +61,7 @@ export async function syncShieldedWalletNow(options?: {
         if (syncMode === "full") {
           state.setNotes(notes);
           state.setShieldedBalance(balance);
-        } else if (notes.length > 0) {
+        } else {
           const merged = mergeNotes(state.notes, notes);
           state.setNotes(merged);
           state.setShieldedBalance(shieldedTotal(merged));

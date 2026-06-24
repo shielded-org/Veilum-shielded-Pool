@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { applyNoteSpendOutcome } from "../lib/note-store";
 import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
 import { ProofLoader } from "../components/ProofLoader";
 import { AmountField } from "../components/ui/AmountField";
@@ -37,6 +38,7 @@ export function UnshieldPage() {
   const viewingPub = useShieldedStore((s) => s.viewingPub);
   const ownerPk = useShieldedStore((s) => s.ownerPk);
   const bumpRouteCursor = useShieldedStore((s) => s.bumpRouteCursor);
+  const setNotes = useShieldedStore((s) => s.setNotes);
   const addTransaction = useShieldedStore((s) => s.addTransaction);
   const updateTransaction = useShieldedStore((s) => s.updateTransaction);
   const [selectedTokenKey, setSelectedTokenKey] = useState("");
@@ -112,6 +114,13 @@ export function UnshieldPage() {
         routeCursor: bumpRouteCursor(),
         onStatus: setStatus,
       });
+      setNotes(
+        applyNoteSpendOutcome(
+          useShieldedStore.getState().notes,
+          result.spentNoteId,
+          result.changeNote
+        )
+      );
       await syncShieldedWalletNow({ mode: "incremental" });
       updateTransaction(txId, {
         status: "confirmed",

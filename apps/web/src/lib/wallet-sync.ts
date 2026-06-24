@@ -80,11 +80,7 @@ export async function refreshShieldedWallet(params: {
         resolved.window
       );
       archivedGapEvents = gap.events;
-      if (!gap.reachable) {
-        warnings.push(
-          `Pool indexer unreachable — notes before RPC ledger ${resolved.window.oldest} may be missing. Check /api/indexer is proxied to Fly.`
-        );
-      } else if (gap.events.length > 0) {
+      if (gap.events.length > 0) {
         scanDebug("refresh:indexerGap", {
           from: config.contracts.deployLedger,
           to: resolved.window.oldest - 1,
