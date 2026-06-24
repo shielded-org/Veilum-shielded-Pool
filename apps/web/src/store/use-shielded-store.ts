@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { DecryptedNote, Hex32, NetworkName, TransactionRecord } from "../lib/types";
-import { deserializeNote, mergeNotes, serializeNote, shieldedTotal } from "../lib/note-store";
+import { mergeNotes, shieldedTotal } from "../lib/note-store";
 import type { StoredScanCacheRow } from "../lib/scan-cache";
 import { payloadToStoredRow } from "../lib/scan-cache";
 import type { ScanCachePayload } from "../lib/scan-cache";
@@ -167,6 +167,12 @@ export const useShieldedStore = create<ShieldedState>()(
     }),
     {
       name: "stellar-shielded-store",
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as Record<string, unknown>;
+        delete state.notes;
+        return state as ShieldedState;
+      },
       partialize: (s) => ({
         network: s.network,
         spendingKey: s.spendingKey,
@@ -175,7 +181,8 @@ export const useShieldedStore = create<ShieldedState>()(
         ownerPk: s.ownerPk,
         keyMaterialAddress: s.keyMaterialAddress,
         routeCursor: s.routeCursor,
-        notes: s.notes.map(serializeNote),
+        // Notes are always rebuilt from on-chain route events — persisting them caused
+        // stale partial balances (e.g. Brave showing only the latest incremental note).
         merkleLeaves: s.merkleLeaves,
         revealBalances: s.revealBalances,
         transactions: s.transactions,
@@ -184,10 +191,8 @@ export const useShieldedStore = create<ShieldedState>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<ShieldedState> & {
-          notes?: ReturnType<typeof serializeNote>[];
           transactions?: TransactionRecord[];
         };
-        const notes = (p.notes ?? []).map(deserializeNote);
         const seenTx = new Set<string>();
         const transactions = (p.transactions ?? []).filter((tx) => {
           if (seenTx.has(tx.id)) return false;
@@ -197,9 +202,9 @@ export const useShieldedStore = create<ShieldedState>()(
         return {
           ...current,
           ...p,
-          notes,
+          notes: [],
+          shieldedBalance: 0n,
           transactions,
-          shieldedBalance: shieldedTotal(notes),
         };
       },
     }

@@ -200,6 +200,9 @@ export async function refreshShieldedWallet(params: {
           chainNotes = reconcileChainNotes(delta.notes, metadataNotes);
         } else if (delta.notes.length > 0) {
           chainNotes = mergeNotes(metadataNotes, delta.notes);
+        } else {
+          // Keep local notes when incremental scan finds nothing new (RPC lag).
+          chainNotes = metadataNotes;
         }
       }
     }
