@@ -17,8 +17,6 @@ import {
   initWalletKit,
   signWalletMessage,
 } from "../lib/wallet-kit";
-import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
-import { useShieldedStore } from "../store/use-shielded-store";
 import { useWallet } from "./use-wallet";
 
 type WalletConnectionValue = {
@@ -65,7 +63,7 @@ export function WalletConnectionProvider({ children }: { children: ReactNode }) 
           ownerPk,
           address,
         });
-        await syncShieldedWalletNow({ mode: "full" });
+        // useShieldedSync (DashboardLayout) runs the initial full scan — avoid parallel refresh races.
       }
 
       await grantMobileWalletSigningSession(address);

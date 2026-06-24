@@ -1,9 +1,10 @@
 import { getDefaultStore } from "jotai";
 
+import { applyNotesFinal, applyNotesPreview } from "./apply-notes-refresh";
 import { loadNetworkConfig } from "./config";
-import { mergeNotes, shieldedTotal } from "./note-store";
 import { BACKGROUND_POLL_MS, pickRefreshMode, scanCacheKey } from "./scan-cache";
 import { refreshShieldedWallet, type WalletRefreshMode } from "./wallet-sync";
+import { beginWalletSync, endWalletSync } from "./wallet-sync-coordinator";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
 
@@ -12,17 +13,9 @@ function applyRefreshResult(
   cacheKey?: string
 ) {
   const state = useShieldedStore.getState();
-  if (result.mode === "full") {
-    state.setNotes(result.notes);
-    state.setShieldedBalance(result.shieldedBalance);
-  } else {
-    const merged = mergeNotes(state.notes, result.notes);
-    state.setNotes(merged);
-    state.setShieldedBalance(shieldedTotal(merged));
-  }
+  applyNotesFinal(result.mode, result.notes, result.shieldedBalance, result.noteScanComplete);
   state.setMerkleLeaves(result.merkleLeaves);
   state.setSyncWarnings(result.warnings);
-  // syncError is for thrown failures only — warnings render as non-blocking banners
   if (cacheKey) {
     state.setScanCacheEntry(cacheKey, result.scanCacheOut);
   }
@@ -31,11 +24,15 @@ function applyRefreshResult(
 export async function syncShieldedWalletNow(options?: {
   syncMerkle?: boolean;
   mode?: WalletRefreshMode;
+  background?: boolean;
 }): Promise<void> {
   const state = useShieldedStore.getState();
   const wallet = getDefaultStore().get(walletAddressAtom) ?? state.keyMaterialAddress;
   if (!wallet || !state.viewingPub || !state.viewingKey || !state.spendingKey) return;
   if (state.keyMaterialAddress && wallet !== state.keyMaterialAddress) return;
+
+  const handle = beginWalletSync({ background: options?.background });
+  if (!handle) return;
 
   state.setScanRefreshing(true);
   state.setSyncError(null);
@@ -45,6 +42,13 @@ export async function syncShieldedWalletNow(options?: {
     const deployLedger = config.contracts.deployLedger;
     const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub, deployLedger);
     const priorCache = state.getScanCacheEntry(cacheKey);
+    const mode =
+      options?.mode ??
+      pickRefreshMode(priorCache, {
+        hasNotes: state.notes.length > 0,
+        hasUnspentNotes: state.notes.some((n) => !n.spent),
+        deployLedger,
+      });
     const result = await refreshShieldedWallet({
       network: state.network,
       wallet,
@@ -54,31 +58,26 @@ export async function syncShieldedWalletNow(options?: {
       existingNotes: state.notes,
       priorScanCache: priorCache,
       routeCursor: state.routeCursor,
-      mode: options?.mode ?? pickRefreshMode(priorCache, {
-        hasNotes: state.notes.length > 0,
-        hasUnspentNotes: state.notes.some((n) => !n.spent),
-        deployLedger,
-      }),
+      mode,
       syncMerkle: options?.syncMerkle ?? false,
       onNotesReady: (notes, balance) => {
-        const syncMode = options?.mode ?? "incremental";
-        if (syncMode === "full") {
-          state.setNotes(notes);
-          state.setShieldedBalance(balance);
-        } else {
-          const merged = mergeNotes(state.notes, notes);
-          state.setNotes(merged);
-          state.setShieldedBalance(shieldedTotal(merged));
-        }
+        if (!handle.isCurrent()) return;
+        applyNotesPreview(mode, notes, balance);
         state.setScanLoading(false);
       },
     });
+    if (!handle.isCurrent()) return;
     applyRefreshResult(result, cacheKey);
   } catch (e) {
-    state.setSyncError(e instanceof Error ? e.message : String(e));
+    if (handle.isCurrent()) {
+      state.setSyncError(e instanceof Error ? e.message : String(e));
+    }
   } finally {
-    state.setScanRefreshing(false);
-    state.setScanLoading(false);
+    endWalletSync(handle.generation);
+    if (handle.isCurrent()) {
+      state.setScanRefreshing(false);
+      state.setScanLoading(false);
+    }
   }
 }
 

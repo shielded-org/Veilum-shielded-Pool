@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { applyNotesPreview } from "../lib/apply-notes-refresh";
 import { loadNetworkConfig } from "../lib/config";
 import { viewingPrivToPub } from "../lib/keys";
 import { fetchRelayerHealth } from "../lib/relayer";
 import { applyRefreshResult, BACKGROUND_POLL_MS } from "../lib/sync-shielded-now";
 import { pickRefreshMode, scanCacheKey } from "../lib/scan-cache";
 import { scanDebug, scanDebugWarn } from "../lib/scan-debug";
-import { mergeNotes, shieldedTotal } from "../lib/note-store";
 import { refreshShieldedWallet, type WalletRefreshMode } from "../lib/wallet-sync";
+import { beginWalletSync, endWalletSync, invalidateWalletSync } from "../lib/wallet-sync-coordinator";
 import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { formatWalletError } from "../lib/wallet-kit";
 import { useWallet } from "../hooks/use-wallet";
@@ -37,8 +38,6 @@ export function ConnectWallet() {
 }
 
 export function useShieldedSync() {
-  const syncGen = useRef(0);
-  const syncInFlight = useRef(false);
   const [hydrated, setHydrated] = useState(() => useShieldedStore.persist.hasHydrated());
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
@@ -101,19 +100,19 @@ export function useShieldedSync() {
         });
         return;
       }
-      if (opts.background && syncInFlight.current) {
-        scanDebug("sync:skippedInFlight", { background: true });
+
+      const handle = beginWalletSync({ background: opts.background });
+      if (!handle) {
+        scanDebug("sync:skippedInFlight", { background: opts.background ?? false });
         return;
       }
 
-      syncInFlight.current = true;
-      const generation = ++syncGen.current;
       const background = opts.background ?? false;
 
       scanDebug("sync:start", {
         mode: opts.mode ?? "auto",
         background,
-        generation,
+        generation: handle.generation,
         walletPrefix: `${wallet.slice(0, 8)}…`,
         viewingPubPrefix: `${viewingPub.slice(0, 10)}…`,
       });
@@ -159,24 +158,17 @@ export function useShieldedSync() {
           routeCursor,
           mode,
           onNotesReady: (notes, balance) => {
-            if (generation !== syncGen.current) return;
-            const state = useShieldedStore.getState();
-            if (mode === "full") {
-              state.setNotes(notes);
-              state.setShieldedBalance(balance);
-            } else if (notes.length > 0) {
-              const merged = mergeNotes(state.notes, notes);
-              state.setNotes(merged);
-              state.setShieldedBalance(shieldedTotal(merged));
-            }
+            if (!handle.isCurrent()) return;
+            applyNotesPreview(mode, notes, balance);
             setScanLoading(false);
           },
         });
-        if (generation !== syncGen.current) return;
+        if (!handle.isCurrent()) return;
         applyRefreshResult(result, cacheKey);
         scanDebug("sync:complete", {
           mode: result.mode,
           noteCount: result.notes.length,
+          noteScanComplete: result.noteScanComplete,
           balance: result.shieldedBalance.toString(),
           routeEventsScanned: result.routeEventsScanned,
           scanStartLedger: result.scanStartLedger,
@@ -184,13 +176,13 @@ export function useShieldedSync() {
           warnings: result.warnings,
         });
       } catch (e) {
-        if (generation !== syncGen.current) return;
+        if (!handle.isCurrent()) return;
         const msg = formatWalletError(e);
         scanDebugWarn("sync:error", { error: msg });
         setSyncError(msg);
       } finally {
-        syncInFlight.current = false;
-        if (generation === syncGen.current) {
+        endWalletSync(handle.generation);
+        if (handle.isCurrent()) {
           setScanLoading(false);
           setScanRefreshing(false);
         }
@@ -245,7 +237,7 @@ export function useShieldedSync() {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      syncGen.current += 1;
+      invalidateWalletSync();
       window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
     };

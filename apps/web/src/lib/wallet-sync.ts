@@ -1,6 +1,7 @@
 import { loadNetworkConfig } from "./config";
 import { getBrowserPoseidonHasher, nullifier } from "./hasher";
 import { attachLeafIndices } from "./merkle-sync";
+import { isNoteScanComplete, isSuspiciousNoteShrink } from "./apply-notes-refresh";
 import { dropPhantomNoteIds, mergeNotes, reconcileChainNotes, shieldedTotal } from "./note-store";
 import { tryFetchHistoryGapEvents } from "./pool-indexer";
 import { resolvePoolStartLedger } from "./pool-ledger";
@@ -26,6 +27,8 @@ export type WalletRefreshResult = {
   warnings: string[];
   scanCacheOut: ScanCachePayload;
   mode: WalletRefreshMode;
+  /** False when the ledger cursor was past the RPC tip or the scan was skipped. */
+  noteScanComplete: boolean;
 };
 
 export async function refreshShieldedWallet(params: {
@@ -184,7 +187,9 @@ export async function refreshShieldedWallet(params: {
           routeCursor: params.routeCursor ?? 0,
           ledgerWindow,
           archivedEvents: archivedGapEvents,
-          scanAllSubchannels: mode === "full",
+          // Always scan every subchannel — incremental only narrows the ledger range.
+          // Always scan every subchannel — incremental only narrows the ledger range.
+          scanAllSubchannels: true,
           knownNoteCount: metadataNotes.filter((n) => !n.spent).length,
           onProgress: (p) => {
             routeEventsScanned = p.eventsScanned;
@@ -222,7 +227,19 @@ export async function refreshShieldedWallet(params: {
     warnings,
   });
 
-  if (chainNotes.length > 0 && (routeEventsScanned > 0 || !scanSkipped || mode === "full")) {
+  const noteScanComplete = isNoteScanComplete({
+    scanSkipped,
+    routeEventsScanned,
+    channelMatched,
+    mode,
+  });
+
+  if (
+    chainNotes.length > 0 &&
+    noteScanComplete &&
+    !isSuspiciousNoteShrink(chainNotes, metadataNotes) &&
+    !isSuspiciousNoteShrink(chainNotes, useShieldedStore.getState().notes)
+  ) {
     params.onNotesReady?.(chainNotes, shieldedTotal(chainNotes));
   }
 
@@ -234,7 +251,15 @@ export async function refreshShieldedWallet(params: {
     chainNotes,
     spending
   );
-  params.onNotesReady?.(notesWithSpend, shieldedTotal(notesWithSpend));
+
+  if (
+    notesWithSpend.length > 0 &&
+    noteScanComplete &&
+    !isSuspiciousNoteShrink(notesWithSpend, metadataNotes) &&
+    !isSuspiciousNoteShrink(notesWithSpend, useShieldedStore.getState().notes)
+  ) {
+    params.onNotesReady?.(notesWithSpend, shieldedTotal(notesWithSpend));
+  }
 
   let merkleLeaves: Hex32[] = [];
   const syncMerkle = params.syncMerkle ?? false;
@@ -253,14 +278,36 @@ export async function refreshShieldedWallet(params: {
       .then((leaves) => {
         const state = useShieldedStore.getState();
         state.setMerkleLeaves(leaves);
-        state.setNotes(attachLeafIndices(state.notes, leaves));
+        const patched = attachLeafIndices(state.notes, leaves);
+        if (patched.length >= state.notes.length) {
+          state.setNotes(patched);
+        }
       })
       .catch(() => {
         /* background merkle — transfer/unshield will resync on demand */
       });
   }
 
-  const notesWithLeaves = dropPhantomNoteIds(attachLeafIndices(notesWithSpend, merkleLeaves));
+  let notesWithLeaves = dropPhantomNoteIds(attachLeafIndices(notesWithSpend, merkleLeaves));
+
+  if (
+    noteScanComplete &&
+    isSuspiciousNoteShrink(notesWithLeaves, metadataNotes) &&
+    metadataNotes.length > 0
+  ) {
+    warnings.push(
+      `Note scan returned ${notesWithLeaves.length} of ${metadataNotes.length} known notes — keeping prior set.`
+    );
+    notesWithLeaves = metadataNotes;
+  } else if (
+    noteScanComplete &&
+    isSuspiciousNoteShrink(notesWithLeaves, useShieldedStore.getState().notes)
+  ) {
+    warnings.push(
+      `Note scan returned ${notesWithLeaves.length} notes but ${useShieldedStore.getState().notes.length} were already loaded — keeping prior set.`
+    );
+    notesWithLeaves = useShieldedStore.getState().notes;
+  }
 
   if (channelMatched > 0 && chainNotes.length === 0 && mode === "full") {
     warnings.push(
@@ -289,6 +336,7 @@ export async function refreshShieldedWallet(params: {
     routeEventsScanned,
     warnings,
     mode,
+    noteScanComplete,
     scanCacheOut: {
       viewingPub: params.viewingPub,
       lastScannedLedger,
