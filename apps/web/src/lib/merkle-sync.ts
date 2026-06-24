@@ -8,6 +8,7 @@ import type { PoseidonHasher } from "./hasher";
 import { computeBatchMerkleRoot, computeIncrementalMerkleRoot } from "./hasher";
 import { merkleDebug, merkleDebugWarn } from "./merkle-debug";
 import {
+  fetchAllContractEvents,
   isLedgerRangeError,
   probeLedgerWindow,
   resolveScanLedgerRange,
@@ -26,26 +27,29 @@ export type ValidatedMerkleSync = OnChainMerkleState & {
   leaves: Hex32[];
 };
 
-function parseEnvelope(envelopeXdr: unknown): xdr.TransactionEnvelope | null {
+function asEnvelope(envelopeXdr: unknown): xdr.TransactionEnvelope | null {
   if (!envelopeXdr) return null;
   if (typeof envelopeXdr === "string") {
     return xdr.TransactionEnvelope.fromXDR(envelopeXdr, "base64");
   }
-  return envelopeXdr as xdr.TransactionEnvelope;
+  const env = envelopeXdr as xdr.TransactionEnvelope;
+  return typeof env.switch === "function" ? env : null;
 }
 
 function getEnvelopeOperations(envelope: xdr.TransactionEnvelope): xdr.Operation[] {
-  const v1 = envelope.v1?.();
-  if (v1) return v1.tx().operations();
-  const v0 = envelope.v0?.();
-  if (v0) return v0.tx().operations();
-  const feeBump = envelope.feeBump?.();
-  if (feeBump) {
-    const inner = feeBump.tx().innerTx();
-    const innerEnv = typeof inner.value === "function" ? inner.value() : inner;
-    return getEnvelopeOperations(innerEnv as xdr.TransactionEnvelope);
+  switch (envelope.switch()) {
+    case xdr.EnvelopeType.envelopeTypeTxV0():
+      return envelope.v0().tx().operations();
+    case xdr.EnvelopeType.envelopeTypeTx():
+      return envelope.v1().tx().operations();
+    case xdr.EnvelopeType.envelopeTypeTxFeeBump(): {
+      const inner = envelope.feeBump().tx().innerTx();
+      const innerEnv = asEnvelope(typeof inner.value === "function" ? inner.value() : inner);
+      return innerEnv ? getEnvelopeOperations(innerEnv) : [];
+    }
+    default:
+      return [];
   }
-  return [];
 }
 
 type PoolEventRef = {
@@ -56,7 +60,6 @@ type PoolEventRef = {
 };
 
 const RPC_TIMEOUT_MS = 15_000;
-const MAX_EVENT_PAGES = 64;
 
 async function withRpcTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return Promise.race([
@@ -103,63 +106,51 @@ export async function syncMerkleLeaves(
   options?: { aspGateId?: string; txRpcUrls?: string[] }
 ): Promise<Hex32[]> {
   const eventRefs: PoolEventRef[] = [];
-  let cursor: string | undefined;
 
   let window = ledgerWindow;
   if (!window?.rpcUrl) {
     throw new Error("Merkle sync requires a probed RPC ledger window");
   }
   window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
-  const { scanFrom, endLedger } = resolveScanLedgerRange(startLedger, window);
+  let range = resolveScanLedgerRange(startLedger, window);
 
-  if (scanFrom > endLedger) return [];
+  if (range.scanFrom > range.endLedger) return [];
 
   onProgress?.({ phase: "events", events: 0 });
 
-  const fetchPage = (useRange: { scanFrom: number; endLedger: number }) =>
-    withRpcTimeout("getEvents", () =>
-      cursor
-        ? rpc.getEvents({
-            cursor,
-            filters: [{ type: "contract", contractIds: [poolId] }],
-            limit: 200,
-          })
-        : rpc.getEvents({
-            startLedger: useRange.scanFrom,
-            endLedger: useRange.endLedger,
-            filters: [{ type: "contract", contractIds: [poolId] }],
-            limit: 200,
-          })
+  let events: Awaited<ReturnType<typeof fetchAllContractEvents>>;
+  try {
+    events = await withRpcTimeout("getEvents", () =>
+      fetchAllContractEvents(
+        rpc,
+        { type: "contract", contractIds: [poolId] },
+        range
+      )
     );
-
-  let range = { scanFrom, endLedger };
-  for (let pages = 0; pages < MAX_EVENT_PAGES; pages++) {
-    let page: Awaited<ReturnType<SorobanRpc["getEvents"]>>;
-    try {
-      page = await fetchPage(range);
-    } catch (err) {
-      if (!isLedgerRangeError(err) || !window.rpcUrl) throw err;
-      window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
-      range = resolveScanLedgerRange(startLedger, window);
-      if (range.scanFrom > range.endLedger) break;
-      page = await fetchPage(range);
-    }
-
-    for (const ev of page.events) {
-      eventRefs.push({
-        txHash: ev.txHash,
-        ledger: ev.ledger,
-        transactionIndex: ev.transactionIndex,
-        operationIndex: ev.operationIndex,
-      });
-    }
-
-    onProgress?.({ phase: "events", events: eventRefs.length });
-
-    // Soroban RPC keeps returning a cursor on empty pages — stop immediately.
-    if (!page.cursor || page.events.length === 0) break;
-    cursor = page.cursor;
+  } catch (err) {
+    if (!isLedgerRangeError(err) || !window.rpcUrl) throw err;
+    window = await probeLedgerWindow(window.rpcUrl, poolId, { force: true });
+    range = resolveScanLedgerRange(startLedger, window);
+    if (range.scanFrom > range.endLedger) return [];
+    events = await withRpcTimeout("getEvents", () =>
+      fetchAllContractEvents(
+        rpc,
+        { type: "contract", contractIds: [poolId] },
+        range
+      )
+    );
   }
+
+  for (const ev of events) {
+    eventRefs.push({
+      txHash: ev.txHash,
+      ledger: ev.ledger,
+      transactionIndex: ev.transactionIndex,
+      operationIndex: ev.operationIndex,
+    });
+  }
+
+  onProgress?.({ phase: "events", events: eventRefs.length });
 
   eventRefs.sort(
     (a, b) =>
@@ -331,7 +322,7 @@ function extractCommitmentsFromTx(
   aspGateId?: string
 ): Hex32[] {
   const out: Hex32[] = [];
-  const envelope = parseEnvelope(tx.envelopeXdr);
+  const envelope = asEnvelope(tx.envelopeXdr);
   if (!envelope) return out;
   const ops = getEnvelopeOperations(envelope);
   for (const op of ops) {

@@ -5,6 +5,7 @@ const { Api, Server: SorobanRpc } = rpc;
 import { decryptNoteECDH, routeForRecipient } from "./keys";
 import { poolContractEventFilter, subchannelScanWindow } from "./pool-ledger";
 import {
+  fetchAllContractEvents,
   isLedgerRangeError,
   probeLedgerWindow,
   resolveScanLedgerRange,
@@ -146,25 +147,23 @@ async function scanIndexedRouteEvents(
       );
 
   const notes: DecryptedNote[] = [];
-  let cursor: string | undefined;
   let pages = 0;
   let eventsScanned = 0;
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  while (true) {
-    const page = cursor
-      ? await rpcClient.getEvents({ cursor, filters: [poolContractEventFilter(poolId)], limit: PAGE_LIMIT })
-      : await rpcClient.getEvents({
-          startLedger: scanFrom,
-          endLedger,
-          filters: [poolContractEventFilter(poolId)],
-          limit: PAGE_LIMIT,
-        });
+  const events = await fetchAllContractEvents(
+    rpcClient,
+    poolContractEventFilter(poolId),
+    { scanFrom, endLedger },
+    PAGE_LIMIT
+  );
 
+  for (let i = 0; i < events.length; i += PAGE_LIMIT) {
+    const chunk = events.slice(i, i + PAGE_LIMIT);
     pages += 1;
     const batch: RouteEvent[] = [];
-    for (const ev of page.events) {
+    for (const ev of chunk) {
       eventsScanned += 1;
       lastScannedLedger = Math.max(lastScannedLedger, ev.ledger);
       const parsed = parseIndexedRouteEventForViewer(ev, channelHex, subchannelHex);
@@ -176,9 +175,6 @@ async function scanIndexedRouteEvents(
 
     notes.push(...(await decryptRouteBatch(batch, viewingPriv, options.tokenFieldFilter)));
     options.onProgress?.({ pages, eventsScanned, channelMatched, notesFound: notes.length });
-
-    if (!page.cursor || page.events.length === 0) break;
-    cursor = page.cursor;
   }
 
   if (eventsScanned === 0) lastScannedLedger = endLedger;
@@ -217,25 +213,23 @@ async function scanLegacyRouteEvents(
   const viewingChannel = routeForRecipient(viewingPub, 0).channel;
 
   const notes: DecryptedNote[] = [];
-  let cursor: string | undefined;
   let pages = 0;
   let eventsScanned = 0;
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  while (true) {
-    const page = cursor
-      ? await rpcClient.getEvents({ cursor, filters: [poolContractEventFilter(poolId)], limit: PAGE_LIMIT })
-      : await rpcClient.getEvents({
-          startLedger: scanFrom,
-          endLedger,
-          filters: [poolContractEventFilter(poolId)],
-          limit: PAGE_LIMIT,
-        });
+  const events = await fetchAllContractEvents(
+    rpcClient,
+    poolContractEventFilter(poolId),
+    { scanFrom, endLedger },
+    PAGE_LIMIT
+  );
 
+  for (let i = 0; i < events.length; i += PAGE_LIMIT) {
+    const chunk = events.slice(i, i + PAGE_LIMIT);
     pages += 1;
     const batch: RouteEvent[] = [];
-    for (const ev of page.events) {
+    for (const ev of chunk) {
       eventsScanned += 1;
       lastScannedLedger = Math.max(lastScannedLedger, ev.ledger);
       const parsed = parseLegacyRouteEvent(ev, viewingChannel);
@@ -248,9 +242,6 @@ async function scanLegacyRouteEvents(
     notes.push(...(await decryptRouteBatch(batch, viewingPriv, options.tokenFieldFilter)));
 
     options.onProgress?.({ pages, eventsScanned, channelMatched, notesFound: notes.length });
-
-    if (!page.cursor || page.events.length === 0) break;
-    cursor = page.cursor;
   }
 
   if (eventsScanned === 0) lastScannedLedger = endLedger;

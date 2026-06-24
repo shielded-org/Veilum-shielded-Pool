@@ -219,7 +219,7 @@ export async function executeShieldDeposit(params: {
     });
   }
 
-  const leafIndex = await getMerkleNextIndex(rpc, params.config, params.wallet, merkleTree);
+  const expectedLeafIndex = await getMerkleNextIndex(rpc, params.config, params.wallet, merkleTree);
   status("Submitting shield deposit…");
   const txHash = await shieldRouted(
     rpc,
@@ -234,6 +234,14 @@ export async function executeShieldDeposit(params: {
     route.subchannel,
     aspMetaHex
   );
+
+  const nextIndex = await getMerkleNextIndex(rpc, params.config, params.wallet, merkleTree);
+  if (nextIndex <= expectedLeafIndex) {
+    throw new Error(
+      "Shield transaction did not insert a merkle leaf on-chain — your deposit was not applied; public tokens were not moved into the pool"
+    );
+  }
+  const leafIndex = expectedLeafIndex;
 
   void fetchMerkleLeaves(params.config, params.wallet).then((leaves) => {
     useShieldedStore.getState().setMerkleLeaves(leaves);

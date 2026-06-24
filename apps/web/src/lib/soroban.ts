@@ -136,7 +136,7 @@ export async function mintToken(
 ): Promise<string> {
   const client = mockTokenClient(config, caller, tokenId, rpcClient, true);
   const tx = await client.mint({ to, amount }, { timeoutInSeconds: 180 });
-  return sendSigned(tx, rpcClient);
+  return sendSigned(tx, rpcClient, config);
 }
 
 export async function approveToken(
@@ -149,7 +149,7 @@ export async function approveToken(
 ): Promise<string> {
   const client = mockTokenClient(config, owner, tokenId, rpcClient, true);
   const tx = await client.approve({ owner, spender, amount }, { timeoutInSeconds: 180 });
-  return sendSigned(tx, rpcClient);
+  return sendSigned(tx, rpcClient, config);
 }
 
 export async function shieldRouted(
@@ -179,7 +179,7 @@ export async function shieldRouted(
     },
     { timeoutInSeconds: 180 }
   );
-  return sendSigned(tx, rpcClient);
+  return sendSigned(tx, rpcClient, config);
 }
 
 export async function getTokenField(

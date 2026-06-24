@@ -1,6 +1,6 @@
 import { rpc } from "@stellar/stellar-sdk";
 
-const { Server: SorobanRpc } = rpc;
+const { Api, Server: SorobanRpc } = rpc;
 
 import { poolContractEventFilter } from "./pool-ledger";
 import type { NetworkConfig } from "./types";
@@ -173,4 +173,54 @@ export function historyGapBeforeWindow(deployLedger: number | undefined, window:
 export function clearEventsRpcCache(): void {
   windowCache.clear();
   eventsRpcPickCache.clear();
+}
+
+/** Soroban RPC may return empty event pages while the cursor still has newer ledgers. */
+export const MAX_CONTRACT_EVENT_PAGES = 128;
+export const MAX_EMPTY_CONTRACT_EVENT_PAGES = 16;
+
+export type ContractEventFilter = {
+  type: "contract";
+  contractIds: string[];
+};
+
+/**
+ * Paginate getEvents until the cursor is exhausted or we hit safety limits.
+ * Do not stop on the first empty page — RPC cursors often skip sparse ledger ranges.
+ */
+export async function fetchAllContractEvents(
+  rpcClient: SorobanRpc,
+  filter: ContractEventFilter,
+  range: ScanLedgerRange,
+  limit = 200
+): Promise<Api.EventResponse[]> {
+  const events: Api.EventResponse[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  let emptyStreak = 0;
+
+  while (pages < MAX_CONTRACT_EVENT_PAGES) {
+    const page = cursor
+      ? await rpcClient.getEvents({ cursor, filters: [filter], limit })
+      : await rpcClient.getEvents({
+          startLedger: range.scanFrom,
+          endLedger: range.endLedger,
+          filters: [filter],
+          limit,
+        });
+
+    pages += 1;
+    if (page.events.length > 0) {
+      emptyStreak = 0;
+      events.push(...page.events);
+    } else {
+      emptyStreak += 1;
+    }
+
+    if (!page.cursor) break;
+    if (emptyStreak >= MAX_EMPTY_CONTRACT_EVENT_PAGES) break;
+    cursor = page.cursor;
+  }
+
+  return events;
 }
