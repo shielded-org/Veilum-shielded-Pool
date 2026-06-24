@@ -17,6 +17,7 @@ import {
   initWalletKit,
   signWalletMessage,
 } from "../lib/wallet-kit";
+import { useShieldedStore } from "../store/use-shielded-store";
 import { useWallet } from "./use-wallet";
 
 type WalletConnectionValue = {
