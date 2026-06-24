@@ -16,6 +16,7 @@ export function NotesPage() {
   const [showDetails, setShowDetails] = useState(true);
   const unspent = notes.filter((n) => !n.spent).length;
   const spent = notes.length - unspent;
+  const initialScan = scanLoading && notes.length === 0;
 
   return (
     <>
@@ -37,13 +38,13 @@ export function NotesPage() {
             Notes are found by scanning pool <code>route</code> events and decrypting with your viewing key.
           </p>
 
-          <NotesSummary total={notes.length} unspent={unspent} spent={spent} loading={scanLoading} />
+          <NotesSummary total={notes.length} unspent={unspent} spent={spent} loading={initialScan} />
 
           {notes.length === 0 ? (
             <EmptyState
-              title={scanLoading ? "Scanning pool events…" : "No notes discovered yet"}
+              title={initialScan ? "Scanning pool events…" : "No notes discovered yet"}
               body={
-                scanLoading
+                initialScan
                   ? "This may take a moment on first load."
                   : "Shield tokens or receive a private transfer"
               }

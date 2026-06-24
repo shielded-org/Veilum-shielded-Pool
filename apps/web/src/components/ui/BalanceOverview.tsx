@@ -18,6 +18,8 @@ type BalanceOverviewProps = {
   reveal: boolean;
   onToggleReveal: () => void;
   loading?: boolean;
+  /** Background sync in progress — show hint without replacing balances. */
+  refreshing?: boolean;
   ready?: boolean;
   unspentCount: number;
   totalNotes: number;
@@ -41,6 +43,7 @@ export function BalanceOverview({
   reveal,
   onToggleReveal,
   loading,
+  refreshing,
   ready,
   unspentCount,
   totalNotes,
@@ -74,7 +77,7 @@ export function BalanceOverview({
               {loading
                 ? "Loading balances…"
                 : ready
-                  ? `${unspentCount} available · ${totalNotes} notes total`
+                  ? `${unspentCount} available · ${totalNotes} notes total${refreshing ? " · updating…" : ""}`
                   : "Connect wallet to view balances"}
             </p>
           </div>

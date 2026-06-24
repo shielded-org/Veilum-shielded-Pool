@@ -52,7 +52,8 @@ export function DashboardHome() {
   const ready = !!(wallet && hasKeys);
 
   const balanceAssets = registry ? summarizeUnspentBySymbol(notes, registry) : [];
-  const balancesLoading = !ready || registry === null || scanLoading || scanRefreshing;
+  const initialScan = scanLoading && notes.length === 0;
+  const balancesLoading = !ready || registry === null || initialScan;
 
   const uniqueTransactions = transactions.filter((tx, i, arr) => {
     return arr.findIndex((t) => t.id === tx.id) === i;
@@ -121,6 +122,7 @@ export function DashboardHome() {
         reveal={reveal}
         onToggleReveal={() => setReveal(!reveal)}
         loading={balancesLoading}
+        refreshing={scanRefreshing && !initialScan}
         ready={ready}
         unspentCount={unspent.length}
         totalNotes={notes.length}
@@ -129,11 +131,11 @@ export function DashboardHome() {
       <div className="dashboard-metrics">
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Available notes</span>
-          <span className="dashboard-metric__value">{ready && !scanLoading ? unspent.length : "—"}</span>
+          <span className="dashboard-metric__value">{ready && !initialScan ? unspent.length : "—"}</span>
         </div>
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Total notes</span>
-          <span className="dashboard-metric__value">{ready && !scanLoading ? notes.length : "—"}</span>
+          <span className="dashboard-metric__value">{ready && !initialScan ? notes.length : "—"}</span>
         </div>
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Wallet</span>
@@ -148,14 +150,14 @@ export function DashboardHome() {
           <h2>Notes</h2>
           <p className="card-desc">
             Balances discovered from encrypted route events on-chain.
-            {scanLoading ? " Initial scan…" : scanRefreshing ? " Refreshing…" : ""}
+            {initialScan ? " Initial scan…" : scanRefreshing ? " Updating in background…" : ""}
           </p>
           {!wallet || !hasKeys ? (
             <EmptyState
               title="No notes yet"
               body="Connect wallet and derive keys to scan notes"
             />
-          ) : scanLoading && notes.length === 0 ? (
+          ) : initialScan ? (
             <EmptyState title="Scanning pool events…" body="This may take a moment on first load." />
           ) : notes.length === 0 ? (
             <EmptyState
