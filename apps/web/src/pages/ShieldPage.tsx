@@ -181,7 +181,7 @@ export function ShieldPage() {
       });
       setAspStatus("approved");
       setStatus("Refreshing balances…");
-      await syncShieldedWalletNow({ mode: "full" });
+      await syncShieldedWalletNow();
       await refreshPublicBalances(wallet);
       finishNotify(loadingToast, {
         ok: true,

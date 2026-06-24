@@ -331,22 +331,25 @@ function dedupeNotes(notes: DecryptedNote[]): DecryptedNote[] {
   return Array.from(dedup.values());
 }
 
+function contractEventKey(ev: Api.EventResponse): string {
+  if (ev.id) return ev.id;
+  return `${ev.txHash}:${ev.ledger}:${ev.transactionIndex}:${ev.operationIndex}`;
+}
+
 function mergeContractEvents(
   archived: Api.EventResponse[],
   rpc: Api.EventResponse[]
 ): Api.EventResponse[] {
-  const gapEnd = archived.length > 0 ? Math.max(...archived.map((e) => e.ledger)) : 0;
   const seen = new Set<string>();
   const out: Api.EventResponse[] = [];
   for (const ev of archived) {
-    const key = `${ev.txHash}:${ev.transactionIndex}:${ev.operationIndex}`;
+    const key = contractEventKey(ev);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ev);
   }
   for (const ev of rpc) {
-    if (gapEnd > 0 && ev.ledger <= gapEnd) continue;
-    const key = `${ev.txHash}:${ev.transactionIndex}:${ev.operationIndex}`;
+    const key = contractEventKey(ev);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ev);

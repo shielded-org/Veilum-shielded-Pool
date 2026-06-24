@@ -1,12 +1,10 @@
 import { loadNetworkConfig } from "./config";
 import { getBrowserPoseidonHasher, nullifier } from "./hasher";
 import { attachLeafIndices } from "./merkle-sync";
-import { isNoteScanComplete, isSuspiciousNoteShrink } from "./apply-notes-refresh";
-import { dropPhantomNoteIds, mergeNotes, reconcileChainNotes, shieldedTotal } from "./note-store";
+import { reconcileChainNotes, shieldedTotal } from "./note-store";
 import { tryFetchHistoryGapEvents } from "./pool-indexer";
 import { resolvePoolStartLedger } from "./pool-ledger";
 import type { ScanCachePayload } from "./scan-cache";
-import { pickRefreshMode, sanitizeScanCache } from "./scan-cache";
 import { resolveNoteSpendStatus, scanRouteEvents } from "./scan";
 import { scanDebug, scanDebugWarn, scanRpcLabel } from "./scan-debug";
 import { fetchMerkleLeaves } from "./shield-ops";
@@ -15,8 +13,6 @@ import { historyGapBeforeWindow, pickEventsRpc, resolveScanLedgerRange } from ".
 import { useShieldedStore } from "../store/use-shielded-store";
 import type { DecryptedNote, Hex32, NetworkName } from "./types";
 
-export type WalletRefreshMode = "full" | "incremental";
-
 export type WalletRefreshResult = {
   notes: DecryptedNote[];
   merkleLeaves: Hex32[];
@@ -24,10 +20,9 @@ export type WalletRefreshResult = {
   scanStartLedger: number;
   lastScannedLedger: number;
   routeEventsScanned: number;
+  channelMatched: number;
   warnings: string[];
   scanCacheOut: ScanCachePayload;
-  mode: WalletRefreshMode;
-  /** False when the ledger cursor was past the RPC tip or the scan was skipped. */
   noteScanComplete: boolean;
 };
 
@@ -41,10 +36,8 @@ export async function refreshShieldedWallet(params: {
   existingNotes?: DecryptedNote[];
   priorScanCache?: ScanCachePayload | null;
   routeCursor?: number;
-  mode?: WalletRefreshMode;
   syncMerkle?: boolean;
   onScanProgress?: (found: number, eventsScanned: number) => void;
-  onNotesReady?: (notes: DecryptedNote[], balance: bigint) => void;
 }): Promise<WalletRefreshResult> {
   const warnings: string[] = [];
   const config = await loadNetworkConfig(params.network);
@@ -60,7 +53,7 @@ export async function refreshShieldedWallet(params: {
     network: params.network,
     poolId,
     deployLedger: deployLedger ?? null,
-    modeRequested: params.mode ?? null,
+    modeRequested: "full",
     metadataNoteCount: metadataNotes.length,
     walletPrefix: params.wallet ? `${params.wallet.slice(0, 8)}…` : null,
     viewingPubPrefix: params.viewingPub ? `${params.viewingPub.slice(0, 10)}…` : null,
@@ -106,42 +99,8 @@ export async function refreshShieldedWallet(params: {
     }
   }
 
-  const priorCache = sanitizeScanCache(params.priorScanCache, ledgerWindow, deployLedger);
-  let mode = params.mode ?? pickRefreshMode(priorCache, {
-    hasNotes: metadataNotes.length > 0,
-    hasUnspentNotes: metadataNotes.some((n) => !n.spent),
-    deployLedger,
-  });
-
   let scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
-  let lastScannedLedger = priorCache?.lastScannedLedger ?? scanFromLedger - 1;
-
-  if (mode === "full") {
-    scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
-    lastScannedLedger = scanFromLedger - 1;
-  } else if (
-    mode === "incremental" &&
-    priorCache &&
-    priorCache.viewingPub.toLowerCase() === params.viewingPub.toLowerCase()
-  ) {
-    scanFromLedger = Math.max(
-      poolDeployLedger ?? ledgerWindow?.oldest ?? 1,
-      priorCache.lastScannedLedger + 1
-    );
-    lastScannedLedger = priorCache.lastScannedLedger;
-  }
-
-  const endLedgerHint = ledgerWindow?.latest;
-  if (
-    mode === "incremental" &&
-    metadataNotes.length === 0 &&
-    endLedgerHint != null &&
-    scanFromLedger > endLedgerHint
-  ) {
-    mode = "full";
-    scanFromLedger = poolDeployLedger ?? ledgerWindow!.oldest;
-    lastScannedLedger = scanFromLedger - 1;
-  }
+  let lastScannedLedger = scanFromLedger - 1;
 
   if (ledgerWindow) {
     const range = resolveScanLedgerRange(scanFromLedger, ledgerWindow);
@@ -149,7 +108,6 @@ export async function refreshShieldedWallet(params: {
   }
 
   scanDebug("refresh:scanPlan", {
-    mode,
     deployLedger: deployLedger ?? null,
     poolDeployLedger,
     scanFromLedger,
@@ -158,8 +116,7 @@ export async function refreshShieldedWallet(params: {
     eventsRpc: ledgerWindow?.rpcUrl ? scanRpcLabel(ledgerWindow.rpcUrl) : null,
     indexedRouteEvents,
     routeCursor: params.routeCursor ?? 0,
-    scanAllSubchannels: mode === "full",
-    priorCacheLedger: priorCache?.lastScannedLedger ?? null,
+    scanAllSubchannels: true,
   });
 
   let routeEventsScanned = 0;
@@ -188,7 +145,6 @@ export async function refreshShieldedWallet(params: {
           ledgerWindow,
           archivedEvents: archivedGapEvents,
           // Always scan every subchannel — incremental only narrows the ledger range.
-          // Always scan every subchannel — incremental only narrows the ledger range.
           scanAllSubchannels: true,
           knownNoteCount: metadataNotes.filter((n) => !n.spent).length,
           onProgress: (p) => {
@@ -201,14 +157,7 @@ export async function refreshShieldedWallet(params: {
         channelMatched = delta.channelMatched;
         lastScannedLedger = Math.max(lastScannedLedger, delta.lastScannedLedger);
 
-        if (mode === "full") {
-          chainNotes = reconcileChainNotes(delta.notes, metadataNotes);
-        } else if (delta.notes.length > 0) {
-          chainNotes = mergeNotes(metadataNotes, delta.notes);
-        } else {
-          // Keep local notes when incremental scan finds nothing new (RPC lag).
-          chainNotes = metadataNotes;
-        }
+        chainNotes = reconcileChainNotes(delta.notes, metadataNotes);
       }
     }
   } catch (e) {
@@ -217,7 +166,6 @@ export async function refreshShieldedWallet(params: {
   }
 
   scanDebug("refresh:scanDone", {
-    mode,
     scanSkipped,
     routeEventsScanned,
     channelMatched,
@@ -227,21 +175,11 @@ export async function refreshShieldedWallet(params: {
     warnings,
   });
 
-  const noteScanComplete = isNoteScanComplete({
+  const noteScanComplete = noteScanSucceeded({
     scanSkipped,
     routeEventsScanned,
     channelMatched,
-    mode,
   });
-
-  if (
-    chainNotes.length > 0 &&
-    noteScanComplete &&
-    !isSuspiciousNoteShrink(chainNotes, metadataNotes) &&
-    !isSuspiciousNoteShrink(chainNotes, useShieldedStore.getState().notes)
-  ) {
-    params.onNotesReady?.(chainNotes, shieldedTotal(chainNotes));
-  }
 
   const notesWithSpend = await resolveAllNoteSpendStatus(
     rpc,
@@ -251,15 +189,6 @@ export async function refreshShieldedWallet(params: {
     chainNotes,
     spending
   );
-
-  if (
-    notesWithSpend.length > 0 &&
-    noteScanComplete &&
-    !isSuspiciousNoteShrink(notesWithSpend, metadataNotes) &&
-    !isSuspiciousNoteShrink(notesWithSpend, useShieldedStore.getState().notes)
-  ) {
-    params.onNotesReady?.(notesWithSpend, shieldedTotal(notesWithSpend));
-  }
 
   let merkleLeaves: Hex32[] = [];
   const syncMerkle = params.syncMerkle ?? false;
@@ -278,49 +207,31 @@ export async function refreshShieldedWallet(params: {
       .then((leaves) => {
         const state = useShieldedStore.getState();
         state.setMerkleLeaves(leaves);
-        const patched = attachLeafIndices(state.notes, leaves);
-        if (patched.length >= state.notes.length) {
-          state.setNotes(patched);
-        }
+        state.patchNoteLeafIndices(leaves);
       })
       .catch(() => {
         /* background merkle — transfer/unshield will resync on demand */
       });
   }
 
-  let notesWithLeaves = dropPhantomNoteIds(attachLeafIndices(notesWithSpend, merkleLeaves));
+  const notesWithLeaves = attachLeafIndices(notesWithSpend, merkleLeaves);
 
-  if (
-    noteScanComplete &&
-    isSuspiciousNoteShrink(notesWithLeaves, metadataNotes) &&
-    metadataNotes.length > 0
-  ) {
-    warnings.push(
-      `Note scan returned ${notesWithLeaves.length} of ${metadataNotes.length} known notes — keeping prior set.`
-    );
-    notesWithLeaves = metadataNotes;
-  } else if (
-    noteScanComplete &&
-    isSuspiciousNoteShrink(notesWithLeaves, useShieldedStore.getState().notes)
-  ) {
-    warnings.push(
-      `Note scan returned ${notesWithLeaves.length} notes but ${useShieldedStore.getState().notes.length} were already loaded — keeping prior set.`
-    );
-    notesWithLeaves = useShieldedStore.getState().notes;
-  }
+  scanDebug("refresh:result", {
+    noteScanComplete,
+    chainNoteCount: chainNotes.length,
+    spendNoteCount: notesWithSpend.length,
+    finalNoteCount: notesWithLeaves.length,
+    channelMatched,
+    routeEventsScanned,
+  });
 
-  if (channelMatched > 0 && chainNotes.length === 0 && mode === "full") {
+  if (channelMatched > 0 && chainNotes.length === 0) {
     warnings.push(
       "Found route events for your channel but none decrypted — use Sync keys if you switched wallets or browsers."
     );
   }
 
-  if (
-    mode === "full" &&
-    channelMatched > 0 &&
-    chainNotes.length > 0 &&
-    channelMatched > chainNotes.length
-  ) {
+  if (channelMatched > 0 && chainNotes.length > 0 && channelMatched > chainNotes.length) {
     warnings.push(
       `Recovered ${chainNotes.length} of ${channelMatched} route events for your channel — some notes may use different keys or subchannels.`
     );
@@ -334,16 +245,26 @@ export async function refreshShieldedWallet(params: {
     scanStartLedger: poolDeployLedger ?? ledgerWindow?.oldest ?? 0,
     lastScannedLedger,
     routeEventsScanned,
+    channelMatched,
     warnings,
-    mode,
     noteScanComplete,
     scanCacheOut: {
       viewingPub: params.viewingPub,
       lastScannedLedger,
-      lastFullScanAt: mode === "full" ? now : priorCache?.lastFullScanAt,
+      lastFullScanAt: now,
       deployLedger,
     },
   };
+}
+
+function noteScanSucceeded(params: {
+  scanSkipped: boolean;
+  routeEventsScanned: number;
+  channelMatched: number;
+}): boolean {
+  if (params.scanSkipped) return false;
+  if (params.routeEventsScanned > 0) return true;
+  return params.channelMatched > 0;
 }
 
 async function resolveAllNoteSpendStatus(

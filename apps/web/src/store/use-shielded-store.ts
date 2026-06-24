@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import type { DecryptedNote, Hex32, NetworkName, TransactionRecord } from "../lib/types";
+import { attachLeafIndices } from "../lib/merkle-sync";
 import { mergeNotes, shieldedTotal } from "../lib/note-store";
+import { traceNotesUpdate } from "../lib/notes-trace";
 import type { StoredScanCacheRow } from "../lib/scan-cache";
 import { payloadToStoredRow } from "../lib/scan-cache";
 import type { ScanCachePayload } from "../lib/scan-cache";
@@ -43,6 +45,7 @@ type ShieldedState = {
   addNote: (note: DecryptedNote) => void;
   markNoteSpent: (id: string) => void;
   setMerkleLeaves: (leaves: Hex32[]) => void;
+  patchNoteLeafIndices: (leaves: Hex32[]) => void;
   setShieldedBalance: (v: bigint) => void;
   setRevealBalances: (v: boolean) => void;
   setScanLoading: (v: boolean) => void;
@@ -119,7 +122,11 @@ export const useShieldedStore = create<ShieldedState>()(
           transactions: [],
           scanCacheByPool: {},
         }),
-      setNotes: (notes) => set({ notes, shieldedBalance: shieldedTotal(notes) }),
+      setNotes: (notes) => {
+        const prev = get().notes;
+        traceNotesUpdate("store:setNotes", prev, notes);
+        set({ notes, shieldedBalance: shieldedTotal(notes) });
+      },
       addNote: (note) => {
         const notes = mergeNotes(get().notes, [note]);
         set({ notes, shieldedBalance: shieldedTotal(notes) });
@@ -129,6 +136,10 @@ export const useShieldedStore = create<ShieldedState>()(
         set({ notes, shieldedBalance: shieldedTotal(notes) });
       },
       setMerkleLeaves: (merkleLeaves) => set({ merkleLeaves }),
+      patchNoteLeafIndices: (leaves) =>
+        set((state) => ({
+          notes: attachLeafIndices(state.notes, leaves),
+        })),
       setShieldedBalance: (shieldedBalance) => set({ shieldedBalance }),
       setRevealBalances: (revealBalances) => set({ revealBalances }),
       setScanLoading: (scanLoading) => set({ scanLoading }),

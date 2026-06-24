@@ -1,84 +1,145 @@
 import { getDefaultStore } from "jotai";
 
-import { applyNotesFinal, applyNotesPreview } from "./apply-notes-refresh";
 import { loadNetworkConfig } from "./config";
-import { BACKGROUND_POLL_MS, pickRefreshMode, scanCacheKey } from "./scan-cache";
-import { refreshShieldedWallet, type WalletRefreshMode } from "./wallet-sync";
-import { beginWalletSync, endWalletSync } from "./wallet-sync-coordinator";
+import { scanCacheKey } from "./scan-cache";
+import { scanDebug, scanDebugWarn } from "./scan-debug";
+import { formatWalletError } from "./wallet-kit";
+import { refreshShieldedWallet } from "./wallet-sync";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
 
-function applyRefreshResult(
-  result: Awaited<ReturnType<typeof refreshShieldedWallet>>,
-  cacheKey?: string
-) {
-  const state = useShieldedStore.getState();
-  applyNotesFinal(result.mode, result.notes, result.shieldedBalance, result.noteScanComplete);
-  state.setMerkleLeaves(result.merkleLeaves);
-  state.setSyncWarnings(result.warnings);
-  if (cacheKey) {
-    state.setScanCacheEntry(cacheKey, result.scanCacheOut);
+/** Poll interval for background re-scan (always full chain scan). */
+export const BACKGROUND_POLL_MS = 60_000;
+
+let syncRunning = false;
+let rerunWhenDone = false;
+/** Bumped on wallet/key change or effect cleanup — stale scans must not apply. */
+let applyGeneration = 0;
+
+function bumpApplyGeneration(): void {
+  applyGeneration += 1;
+}
+
+/**
+ * Single wallet sync entry point. Always runs one full on-chain note scan.
+ * Concurrent calls coalesce into a single follow-up scan after the current one.
+ */
+export async function syncShieldedWalletNow(options?: {
+  syncMerkle?: boolean;
+  /** First load — show loading UI when notes are empty. */
+  initial?: boolean;
+  /** Background refresh — show subtle spinner only. */
+  background?: boolean;
+}): Promise<void> {
+  if (syncRunning) {
+    rerunWhenDone = true;
+    scanDebug("sync:coalesced", {});
+    return;
+  }
+
+  syncRunning = true;
+  const applyGen = applyGeneration;
+
+  try {
+    do {
+      rerunWhenDone = false;
+      await runFullScan(options ?? {}, applyGen);
+    } while (rerunWhenDone && applyGen === applyGeneration);
+  } finally {
+    syncRunning = false;
   }
 }
 
-export async function syncShieldedWalletNow(options?: {
-  syncMerkle?: boolean;
-  mode?: WalletRefreshMode;
-  background?: boolean;
-}): Promise<void> {
+async function runFullScan(
+  options: { syncMerkle?: boolean; initial?: boolean; background?: boolean },
+  applyGen: number
+): Promise<void> {
   const state = useShieldedStore.getState();
   const wallet = getDefaultStore().get(walletAddressAtom) ?? state.keyMaterialAddress;
   if (!wallet || !state.viewingPub || !state.viewingKey || !state.spendingKey) return;
   if (state.keyMaterialAddress && wallet !== state.keyMaterialAddress) return;
 
-  const handle = beginWalletSync({ background: options?.background });
-  if (!handle) return;
+  const background = options.background ?? false;
+  const initial = options.initial ?? false;
 
-  state.setScanRefreshing(true);
-  state.setSyncError(null);
+  scanDebug("sync:start", {
+    initial,
+    background,
+    applyGen,
+    storeNotes: state.notes.length,
+    walletPrefix: `${wallet.slice(0, 8)}…`,
+  });
+
+  if (background) {
+    state.setScanRefreshing(true);
+  } else if (initial) {
+    state.setSyncError(null);
+    if (state.notes.length === 0) state.setScanLoading(true);
+  }
+
   try {
     const config = await loadNetworkConfig(state.network);
     const poolId = config.contracts.shieldedPool;
     const deployLedger = config.contracts.deployLedger;
     const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub, deployLedger);
     const priorCache = state.getScanCacheEntry(cacheKey);
-    const mode =
-      options?.mode ??
-      pickRefreshMode(priorCache, {
-        hasNotes: state.notes.length > 0,
-        hasUnspentNotes: state.notes.some((n) => !n.spent),
-        deployLedger,
-      });
+    const metadataNotes = state.notes;
+
     const result = await refreshShieldedWallet({
       network: state.network,
       wallet,
       viewingKey: state.viewingKey,
       viewingPub: state.viewingPub,
       spendingKey: state.spendingKey,
-      existingNotes: state.notes,
+      existingNotes: metadataNotes,
       priorScanCache: priorCache,
       routeCursor: state.routeCursor,
-      mode,
-      syncMerkle: options?.syncMerkle ?? false,
-      onNotesReady: (notes, balance) => {
-        if (!handle.isCurrent()) return;
-        applyNotesPreview(mode, notes, balance);
-        state.setScanLoading(false);
-      },
+      syncMerkle: options.syncMerkle ?? false,
     });
-    if (!handle.isCurrent()) return;
-    applyRefreshResult(result, cacheKey);
+
+    if (applyGen !== applyGeneration) {
+      scanDebug("sync:stale", { applyGen, current: applyGeneration });
+      return;
+    }
+
+    if (result.noteScanComplete) {
+      const prev = state.notes.length;
+      if (result.notes.length > 0 || prev === 0) {
+        state.setNotes(result.notes);
+      }
+      scanDebug("sync:applied", {
+        prev,
+        next: result.notes.length,
+        storeAfter: useShieldedStore.getState().notes.length,
+        channelMatched: result.channelMatched,
+        routeEventsScanned: result.routeEventsScanned,
+      });
+    } else {
+      scanDebugWarn("sync:skippedApply", {
+        warnings: result.warnings,
+        routeEventsScanned: result.routeEventsScanned,
+      });
+    }
+
+    state.setMerkleLeaves(result.merkleLeaves);
+    state.setSyncWarnings(result.warnings);
+    state.setScanCacheEntry(cacheKey, result.scanCacheOut);
   } catch (e) {
-    if (handle.isCurrent()) {
-      state.setSyncError(e instanceof Error ? e.message : String(e));
+    if (applyGen === applyGeneration) {
+      state.setSyncError(formatWalletError(e));
+      scanDebugWarn("sync:error", { error: formatWalletError(e) });
     }
   } finally {
-    endWalletSync(handle.generation);
-    if (handle.isCurrent()) {
-      state.setScanRefreshing(false);
+    if (applyGen === applyGeneration) {
       state.setScanLoading(false);
+      state.setScanRefreshing(false);
     }
   }
 }
 
-export { applyRefreshResult, BACKGROUND_POLL_MS };
+/** Invalidate in-flight scan apply (e.g. wallet disconnect or key change). */
+export function invalidateShieldedSync(): void {
+  bumpApplyGeneration();
+}
+
+export { bumpApplyGeneration };

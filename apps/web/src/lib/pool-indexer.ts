@@ -8,6 +8,7 @@ const { Api } = rpc;
 
 export type IndexedPoolEventRow = {
   type?: string;
+  id?: string;
   ledger: number;
   ledgerClosedAt?: string;
   topic?: string[];
@@ -24,7 +25,7 @@ function hydrateEvent(row: IndexedPoolEventRow): Api.EventResponse {
     ledger: row.ledger,
     ledgerClosedAt: row.ledgerClosedAt ?? "",
     contractId: undefined,
-    id: row.txHash,
+    id: row.id ?? row.txHash,
     pagingToken: "",
     topic: (row.topic ?? []).map((t) => xdr.ScVal.fromXDR(t, "base64")),
     value: row.value ? xdr.ScVal.fromXDR(row.value, "base64") : xdr.ScVal.scvVoid(),

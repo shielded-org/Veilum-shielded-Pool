@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 function eventKey(ev) {
+  if (ev.id) return ev.id;
   return `${ev.txHash}:${ev.ledger}:${ev.transactionIndex}:${ev.operationIndex}`;
 }
 

@@ -121,7 +121,7 @@ export function UnshieldPage() {
           result.changeNote
         )
       );
-      await syncShieldedWalletNow({ mode: "incremental" });
+      await syncShieldedWalletNow();
       updateTransaction(txId, {
         status: "confirmed",
         txHash: result.txHash ?? undefined,
