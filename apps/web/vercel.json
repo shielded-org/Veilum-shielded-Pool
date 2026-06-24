@@ -13,6 +13,10 @@
       "source": "/api/asp/:path*",
       "destination": "https://veilum-shielded-pool.onrender.com/:path*"
     },
+    {
+      "source": "/api/indexer/:path*",
+      "destination": "https://veilum-shielded-indexer.onrender.com/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -2,6 +2,7 @@ import { loadNetworkConfig } from "./config";
 import { getBrowserPoseidonHasher, nullifier } from "./hasher";
 import { attachLeafIndices } from "./merkle-sync";
 import { dropPhantomNoteIds, mergeNotes, reconcileChainNotes, shieldedTotal } from "./note-store";
+import { tryFetchHistoryGapEvents } from "./pool-indexer";
 import { resolvePoolStartLedger } from "./pool-ledger";
 import type { ScanCachePayload } from "./scan-cache";
 import { pickRefreshMode, sanitizeScanCache } from "./scan-cache";
@@ -66,15 +67,34 @@ export async function refreshShieldedWallet(params: {
   let poolDeployLedger: number | null = null;
   let ledgerWindow: Awaited<ReturnType<typeof resolvePoolStartLedger>>["window"] | undefined;
   let eventsRpc = rpc;
+  let archivedGapEvents: Awaited<ReturnType<typeof tryFetchHistoryGapEvents>>["events"] = [];
   try {
     const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
     poolDeployLedger = resolved.startLedger;
     ledgerWindow = resolved.window;
     eventsRpc = resolved.eventsRpc;
     if (historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
-      warnings.push(
-        `Pool deploy ledger ${config.contracts.deployLedger} predates RPC event history (oldest ${resolved.window.oldest}). Notes from before that ledger cannot be recovered via RPC.`
+      const gap = await tryFetchHistoryGapEvents(
+        poolId,
+        config.contracts.deployLedger,
+        resolved.window
       );
+      archivedGapEvents = gap.events;
+      if (!gap.reachable) {
+        warnings.push(
+          `Pool deploy ledger ${config.contracts.deployLedger} predates RPC event history (oldest ${resolved.window.oldest}). Start the pool indexer to archive events before they fall off RPC.`
+        );
+      } else if (gap.events.length === 0) {
+        warnings.push(
+          `No archived pool events for ledgers ${config.contracts.deployLedger}–${resolved.window.oldest - 1}. Shields in that window may be unrecoverable if the indexer was not running then.`
+        );
+      } else {
+        scanDebug("refresh:indexerGap", {
+          from: config.contracts.deployLedger,
+          to: resolved.window.oldest - 1,
+          count: gap.events.length,
+        });
+      }
     }
   } catch (e) {
     warnings.push(`Could not resolve scan start ledger: ${errMsg(e)}`);
@@ -167,6 +187,7 @@ export async function refreshShieldedWallet(params: {
           indexedRouteEvents,
           routeCursor: params.routeCursor ?? 0,
           ledgerWindow,
+          archivedEvents: archivedGapEvents,
           scanAllSubchannels: mode === "full",
           knownNoteCount: metadataNotes.filter((n) => !n.spent).length,
           onProgress: (p) => {

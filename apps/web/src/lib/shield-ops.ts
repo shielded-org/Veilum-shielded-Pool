@@ -26,6 +26,8 @@ import {
 import { findLeafIndex, syncMerkleLeavesValidated } from "./merkle-sync";
 import { merkleDebug, merkleDebugWarn } from "./merkle-debug";
 import { resolvePoolStartLedger } from "./pool-ledger";
+import { tryFetchHistoryGapEvents } from "./pool-indexer";
+import { historyGapBeforeWindow } from "./rpc-events";
 import { generateUltraHonkProof, packTransferMeta, type ProofInputs } from "./proving";
 import { generateAspUltraHonkProof } from "./proving-asp";
 import {
@@ -65,6 +67,15 @@ async function resolveMerkleSpendPath(params: {
     shieldedPool,
     params.config.contracts.deployLedger
   );
+  let archivedEvents: Awaited<ReturnType<typeof tryFetchHistoryGapEvents>>["events"] = [];
+  if (historyGapBeforeWindow(params.config.contracts.deployLedger, window)) {
+    const gap = await tryFetchHistoryGapEvents(
+      shieldedPool,
+      params.config.contracts.deployLedger,
+      window
+    );
+    archivedEvents = gap.events;
+  }
 
   const zero = `0x${"00".repeat(32)}` as Hex32;
   const [onChainH00, localH00] = await Promise.all([
@@ -117,7 +128,8 @@ async function resolveMerkleSpendPath(params: {
     {
       hasher,
     },
-    window
+    window,
+    archivedEvents
   );
 
   const leafIndex = resolveLeafIndex(synced.leaves);
@@ -619,6 +631,11 @@ export async function fetchMerkleLeaves(
   const hasher = await getBrowserPoseidonHasher();
   const resolved = await resolvePoolStartLedger(config, poolId, config.contracts.deployLedger);
   const scanStart = startLedger ?? resolved.startLedger;
+  let archivedEvents: Awaited<ReturnType<typeof tryFetchHistoryGapEvents>>["events"] = [];
+  if (historyGapBeforeWindow(config.contracts.deployLedger, resolved.window)) {
+    const gap = await tryFetchHistoryGapEvents(poolId, config.contracts.deployLedger, resolved.window);
+    archivedEvents = gap.events;
+  }
   const synced = await syncMerkleLeavesValidated(
     resolved.eventsRpc,
     config,
@@ -636,7 +653,8 @@ export async function fetchMerkleLeaves(
     {
       hasher,
     },
-    resolved.window
+    resolved.window,
+    archivedEvents
   );
   return synced.leaves;
 }

@@ -1,4 +1,5 @@
 {
   "relayerUrl": "/api/relayer",
-  "aspUrl": "/api/asp"
+  "aspUrl": "/api/asp",
+  "indexerUrl": "/api/indexer"
 }

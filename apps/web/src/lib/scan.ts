@@ -50,6 +50,8 @@ export type ScanRouteOptions = {
   scanAllSubchannels?: boolean;
   /** Expand incremental subchannel window using known local note count. */
   knownNoteCount?: number;
+  /** Pool events below the RPC retention window (from indexer). */
+  archivedEvents?: Api.EventResponse[];
   onProgress?: (p: ScanProgress) => void;
 };
 
@@ -152,11 +154,14 @@ async function scanIndexedRouteEvents(
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  const events = await fetchAllContractEvents(
-    rpcClient,
-    poolContractEventFilter(poolId),
-    { scanFrom, endLedger },
-    PAGE_LIMIT
+  const events = mergeContractEvents(
+    options.archivedEvents ?? [],
+    await fetchAllContractEvents(
+      rpcClient,
+      poolContractEventFilter(poolId),
+      { scanFrom, endLedger },
+      PAGE_LIMIT
+    )
   );
 
   for (let i = 0; i < events.length; i += PAGE_LIMIT) {
@@ -218,11 +223,14 @@ async function scanLegacyRouteEvents(
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  const events = await fetchAllContractEvents(
-    rpcClient,
-    poolContractEventFilter(poolId),
-    { scanFrom, endLedger },
-    PAGE_LIMIT
+  const events = mergeContractEvents(
+    options.archivedEvents ?? [],
+    await fetchAllContractEvents(
+      rpcClient,
+      poolContractEventFilter(poolId),
+      { scanFrom, endLedger },
+      PAGE_LIMIT
+    )
   );
 
   for (let i = 0; i < events.length; i += PAGE_LIMIT) {
@@ -321,6 +329,35 @@ function dedupeNotes(notes: DecryptedNote[]): DecryptedNote[] {
   const dedup = new Map<string, DecryptedNote>();
   for (const n of notes) dedup.set(n.id, n);
   return Array.from(dedup.values());
+}
+
+function mergeContractEvents(
+  archived: Api.EventResponse[],
+  rpc: Api.EventResponse[]
+): Api.EventResponse[] {
+  const gapEnd = archived.length > 0 ? Math.max(...archived.map((e) => e.ledger)) : 0;
+  const seen = new Set<string>();
+  const out: Api.EventResponse[] = [];
+  for (const ev of archived) {
+    const key = `${ev.txHash}:${ev.transactionIndex}:${ev.operationIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ev);
+  }
+  for (const ev of rpc) {
+    if (gapEnd > 0 && ev.ledger <= gapEnd) continue;
+    const key = `${ev.txHash}:${ev.transactionIndex}:${ev.operationIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ev);
+  }
+  out.sort(
+    (a, b) =>
+      a.ledger - b.ledger ||
+      a.transactionIndex - b.transactionIndex ||
+      a.operationIndex - b.operationIndex
+  );
+  return out;
 }
 
 function parseLegacyRouteEvent(ev: Api.EventResponse, viewingChannel: Hex32): RouteEvent | null {

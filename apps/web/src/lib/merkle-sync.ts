@@ -103,7 +103,7 @@ export async function syncMerkleLeaves(
   startLedger: number,
   onProgress?: (p: MerkleSyncProgress) => void,
   ledgerWindow?: RpcLedgerWindow,
-  options?: { aspGateId?: string; txRpcUrls?: string[] }
+  options?: { aspGateId?: string; txRpcUrls?: string[]; archivedEvents?: Api.EventResponse[] }
 ): Promise<Hex32[]> {
   const eventRefs: PoolEventRef[] = [];
 
@@ -142,6 +142,15 @@ export async function syncMerkleLeaves(
   }
 
   for (const ev of events) {
+    eventRefs.push({
+      txHash: ev.txHash,
+      ledger: ev.ledger,
+      transactionIndex: ev.transactionIndex,
+      operationIndex: ev.operationIndex,
+    });
+  }
+
+  for (const ev of options?.archivedEvents ?? []) {
     eventRefs.push({
       txHash: ev.txHash,
       ledger: ev.ledger,
@@ -232,7 +241,8 @@ export async function syncMerkleLeavesValidated(
   startLedger: number,
   onProgress?: (p: MerkleSyncProgress) => void,
   verify?: MerkleVerifyOptions,
-  ledgerWindow?: RpcLedgerWindow
+  ledgerWindow?: RpcLedgerWindow,
+  archivedEvents?: Api.EventResponse[]
 ): Promise<ValidatedMerkleSync> {
   let lastLeaves: Hex32[] = [];
   let lastState: OnChainMerkleState = { nextIndex: 0, root: `0x${"00".repeat(32)}` as Hex32 };
@@ -244,6 +254,7 @@ export async function syncMerkleLeavesValidated(
     const leaves = await syncMerkleLeaves(rpc, poolId, startLedger, onProgress, ledgerWindow, {
       aspGateId: config.contracts.aspGate ?? undefined,
       txRpcUrls,
+      archivedEvents,
     });
     const state = await readOnChainMerkleState(rpc, config, wallet, merkleId);
     lastState = state;
