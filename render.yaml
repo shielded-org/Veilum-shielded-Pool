@@ -1,0 +1,41 @@
+# Render Blueprint — pool events indexer
+# Dashboard: New > Blueprint > connect repo > path: render.yaml
+#
+# After deploy, confirm the public URL matches apps/web/vercel.json:
+#   /api/indexer → https://veilum-shielded-indexer.onrender.com
+#
+# Persistent disk (below) keeps archived events across deploys. On free tier,
+# remove the `disk` block and set INDEXER_DATA_DIR=./data (data resets on restart).
+
+services:
+  - type: web
+    name: veilum-shielded-indexer
+    runtime: node
+    region: oregon
+    plan: starter
+    disk:
+      name: indexer-data
+      mountPath: /var/data/indexer
+      sizeGB: 1
+    buildCommand: npm install
+    startCommand: npm run start --workspace @stellar-shielded/indexer
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: INDEXER_HOST
+        value: 0.0.0.0
+      - key: INDEXER_DATA_DIR
+        value: /var/data/indexer
+      - key: INDEXER_POLL_MS
+        value: "60000"
+      - key: STELLAR_NETWORK
+        value: testnet
+      - key: STELLAR_RPC_URL
+        value: https://soroban-testnet.stellar.org:443
+      - key: STELLAR_RPC_FALLBACK_URLS
+        value: https://soroban-rpc.testnet.stellar.gateway.fm,https://rpc.ankr.com/stellar_testnet_soroban
+      - key: INDEXER_POOL_ID
+        value: CBU6QJ7H2LH2IFZUNTPVBH6637JXOADXVIZTGOLIFGKJREAB6R2AY7D4
+      - key: INDEXER_DEPLOY_LEDGER
+        value: "3138857"
