@@ -133,7 +133,11 @@ export function useShieldedSync() {
         const cacheKey = scanCacheKey(network, poolId, viewingPub, deployLedger);
         const priorCache = useShieldedStore.getState().getScanCacheEntry(cacheKey);
         const metadataNotes = useShieldedStore.getState().notes;
-        const mode = opts.mode ?? pickRefreshMode(priorCache, { hasNotes: metadataNotes.length > 0, deployLedger });
+        const mode = opts.mode ?? pickRefreshMode(priorCache, {
+          hasNotes: metadataNotes.length > 0,
+          hasUnspentNotes: metadataNotes.some((n) => !n.spent),
+          deployLedger,
+        });
 
         const derivedPub = viewingPrivToPub(BigInt(viewingKey));
         scanDebug("sync:keyConsistency", {

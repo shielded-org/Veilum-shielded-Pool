@@ -54,7 +54,11 @@ export async function syncShieldedWalletNow(options?: {
       existingNotes: state.notes,
       priorScanCache: priorCache,
       routeCursor: state.routeCursor,
-      mode: options?.mode ?? pickRefreshMode(priorCache, { hasNotes: state.notes.length > 0, deployLedger }),
+      mode: options?.mode ?? pickRefreshMode(priorCache, {
+        hasNotes: state.notes.length > 0,
+        hasUnspentNotes: state.notes.some((n) => !n.spent),
+        deployLedger,
+      }),
       syncMerkle: options?.syncMerkle ?? false,
       onNotesReady: (notes, balance) => {
         const syncMode = options?.mode ?? "incremental";

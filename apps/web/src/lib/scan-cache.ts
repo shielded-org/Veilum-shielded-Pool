@@ -42,9 +42,10 @@ export function payloadToStoredRow(payload: ScanCachePayload): StoredScanCacheRo
 
 export function pickRefreshMode(
   priorCache: ScanCachePayload | null,
-  opts?: { hasNotes?: boolean; deployLedger?: number }
+  opts?: { hasNotes?: boolean; hasUnspentNotes?: boolean; deployLedger?: number }
 ): "full" | "incremental" {
   if (!opts?.hasNotes) return "full";
+  if (opts.hasNotes && opts.hasUnspentNotes === false) return "full";
   if (
     opts.deployLedger &&
     priorCache?.deployLedger &&

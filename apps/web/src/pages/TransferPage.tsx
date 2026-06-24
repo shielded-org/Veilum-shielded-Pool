@@ -120,7 +120,7 @@ export function TransferPage() {
           result.changeNote
         )
       );
-      await syncShieldedWalletNow({ mode: "incremental" });
+      await syncShieldedWalletNow({ mode: "full" });
       updateTransaction(txId, {
         status: "confirmed",
         txHash: result.txHash ?? undefined,

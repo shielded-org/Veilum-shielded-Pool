@@ -104,7 +104,11 @@ export async function refreshShieldedWallet(params: {
   }
 
   const priorCache = sanitizeScanCache(params.priorScanCache, ledgerWindow, deployLedger);
-  let mode = params.mode ?? pickRefreshMode(priorCache, { hasNotes: metadataNotes.length > 0, deployLedger });
+  let mode = params.mode ?? pickRefreshMode(priorCache, {
+    hasNotes: metadataNotes.length > 0,
+    hasUnspentNotes: metadataNotes.some((n) => !n.spent),
+    deployLedger,
+  });
 
   let scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
   let lastScannedLedger = priorCache?.lastScannedLedger ?? scanFromLedger - 1;

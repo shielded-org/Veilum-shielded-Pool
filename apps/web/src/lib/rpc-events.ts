@@ -108,8 +108,12 @@ export async function probeLedgerWindow(
 }
 
 export function uniqueRpcUrls(config: NetworkConfig): string[] {
-  const urls = [config.rpcUrl, ...(config.eventsRpcUrls ?? [])];
-  return [...new Set(urls.filter(Boolean))];
+  return browserRpcUrls(config);
+}
+
+/** Browser fetches must use CORS-enabled RPC only (third-party mirrors block Vercel origins). */
+export function browserRpcUrls(config: NetworkConfig): string[] {
+  return [config.rpcUrl].filter(Boolean);
 }
 
 async function pickBestEventsRpcUrl(
