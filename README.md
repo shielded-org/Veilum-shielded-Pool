@@ -18,15 +18,16 @@ The system Implements **Association Set Providers (ASPs)** as a compliance bound
 - **ASP compliance boundary**: Membership proofs on shield/unshield; internal transfers stay private and ASP-free
 - **Browser-based proving**: Client-side proof generation with Noir.js and Barretenberg (`@aztec/bb.js`), with CLI proving on the relayer for reliable on-chain verification
 - **Stellar integration**: Built on Soroban smart contracts, Stellar Wallets Kit, and standard token approvals for deposits
+- **Pool events indexer**: Archives pool contract events and merkle leaf commitments below Soroban RPC retention; serves ordered merkle snapshots for fast client sync
 
 ## Demo Application
 
-The demo consists of four main parts:
+The demo consists of five main parts:
 
 - **Frontend** (`apps/web/`): Marketing pages (`/`, `/about`, `/how-to-use`) and a dashboard (`/dashboard/*`) for wallet connect, shield, transfer, unshield, notes, keys, faucet, and ASP admin
 - **Circuits** (`packages/circuits/`, `packages/circuits-asp/`): Noir circuits where constraints are defined — note hashing, Merkle membership, nullifiers, balance conservation, and ASP membership
 - **Smart contracts** (`packages/contracts/`): Soroban contracts that hold pool state, verify proofs, and process deposits, transfers, and withdrawals
-- **Services** (`services/relayer/`, `services/asp/`): HTTP relayer for private operations and ASP service for membership registry, screening, and on-chain approve/deny
+- **Services** (`services/relayer/`, `services/asp/`, `services/indexer/`): HTTP relayer for private operations, ASP service for membership registry and screening, and pool-events indexer for merkle/history archival
 
 ### Try it out
 
@@ -76,15 +77,16 @@ Canonical testnet contract IDs live in `apps/web/public/deployment.json`.
 
    Deployment addresses are written to `scripts/deployment.json` and copied to `apps/web/public/deployment.json`.
 
-4. **Serve the stack** (three terminals):
+4. **Serve the stack** (four terminals):
 
    ```bash
    npm run dev:relayer          # :8787
    npm run dev --workspace @stellar-shielded/asp   # :8788 (if ASP enabled)
+   npm run dev:indexer          # :8789
    npm run dev:web              # Vite dev server
    ```
 
-   Copy `apps/web/.env.example` to `apps/web/.env.local` if relayer/ASP are not at default localhost URLs.
+   Copy `apps/web/.env.example` to `apps/web/.env.local` if relayer, ASP, or indexer are not at default localhost URLs.
 
 5. Open the dashboard, connect a wallet, derive keys, and run **Shield → Transfer → Unshield**.
 
@@ -172,6 +174,38 @@ The relayer (`services/relayer/`, default `:8787`) submits private operations so
 
 Shield is intentionally **not** relayer-submitted: a relayer-signed deposit would link the shield to the relayer's Stellar address instead of the user's.
 
+#### Pool events indexer
+
+The indexer (`services/indexer/`, default `:8789`) archives **pool contract events** and **merkle leaf commitments** so the web client can rebuild the shielded Merkle tree without re-scanning the full chain on every private transfer.
+
+Soroban RPC only retains recent ledger history. Older pool transactions fall out of `getEvents` / `getTransaction` windows, but commitments are still needed to build spend paths. The indexer closes that gap by:
+
+1. **Tailing pool events** from Soroban RPC (with fallback mirrors) and persisting them to disk
+2. **Extracting per-tx merkle leaves** from transaction envelopes (RPC, then Horizon for archived ledgers)
+3. **Rebuilding an ordered merkle leaf list** after each poll
+4. **Serving archived data** to the web app for gap events, per-tx leaf cache, and fast-path merkle sync
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Liveness, pool id, event count, merkle leaf stats |
+| `GET /pool/:poolId/events?fromLedger=&toLedger=` | Archived contract events (pre-RPC-window history) |
+| `GET /pool/:poolId/tx-leaves?txHashes=` | Cached merkle commitments per tx (omit `txHashes` for full map) |
+| `GET /pool/:poolId/merkle-leaves` | Ordered merkle leaf list + `leafCount` / `missingTxCount` |
+
+**Client sync strategy** (see `apps/web/src/lib/merkle-sync.ts`):
+
+1. **Indexer fast path** — if ordered leaves match on-chain `next_index` and root, skip per-tx fetches
+2. **Live rebuild** — scan RPC events + indexer gap events; fetch tx envelopes via RPC → Horizon → indexer cache
+3. **Recovery** — batch re-fetch missing tx leaves from the indexer on count mismatch
+
+**Production:** `https://veilum-shielded-indexer.fly.dev` (proxied in the Vite dev server and Vercel as `/api/indexer`). Deploy with:
+
+```bash
+npm run deploy:indexer   # fly deploy --config fly.indexer.toml
+```
+
+Persistent state lives on a Fly volume (`indexer_data` → `/data`). Copy `services/indexer/.env.example` for local configuration.
+
 #### Keys and shielded addresses
 
 Keys are derived locally from a one-time wallet signature — they never leave the browser.
@@ -210,7 +244,11 @@ Implementation: `packages/sdk/`, `apps/web/src/lib/keys.ts`, `apps/web/src/lib/s
 | `RELAYER_SECRET_KEY` | `services/relayer/.env` | Signs relayer Soroban txs |
 | `ASP_ENFORCE`, `ASP_SERVICE_URL` | relayer `.env` | Gate unshield via ASP |
 | `ASP_ADMIN_TOKEN`, `ASP_MEMBERSHIP_CONTRACT` | `services/asp/.env` | ASP operator API and on-chain contracts |
-| `VITE_RELAYER_URL`, `VITE_ASP_URL` | `apps/web/.env.local` | Local dev service URLs |
+| `INDEXER_POOL_ID`, `INDEXER_DEPLOY_LEDGER` | `services/indexer/.env` | Pool to index and deploy ledger hint |
+| `STELLAR_RPC_URL`, `STELLAR_RPC_FALLBACK_URLS` | `services/indexer/.env` | Soroban RPC endpoints for event tailing |
+| `STELLAR_HORIZON_URL`, `INDEXER_ASP_GATE_ID` | `services/indexer/.env` | Archived tx envelopes; ASP-gate leaf extraction |
+| `INDEXER_DATA_DIR`, `INDEXER_POLL_MS` | `services/indexer/.env` | Storage path and poll interval (default 60s) |
+| `VITE_RELAYER_URL`, `VITE_ASP_URL`, `VITE_INDEXER_URL` | `apps/web/.env.local` | Local dev service URLs |
 
 Network RPC and passphrase: `packages/config/networks.json`. Deployment output: `scripts/deployment.json` → `apps/web/public/deployment.json`.
 
@@ -227,7 +265,9 @@ privacy/
 │   └── contracts/             # Pool, Merkle tree, verifier, ASP suite, mock tokens
 ├── services/
 │   ├── relayer/               # HTTP relayer (:8787)
-│   └── asp/                   # ASP compliance service (:8788)
+│   ├── asp/                   # ASP compliance service (:8788)
+│   └── indexer/               # Pool events + merkle leaf indexer (:8789)
+├── fly.indexer.toml           # Fly.io deploy config for production indexer
 └── scripts/                   # Build, deploy, E2E
 ```
 
