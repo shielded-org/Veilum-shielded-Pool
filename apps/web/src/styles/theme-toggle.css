@@ -56,7 +56,7 @@
   box-shadow: 0 24px 48px var(--hero-shadow);
 }
 
-/* Wallet kit overrides follow document theme */
+/* Wallet kit — backdrop + modal polish per document theme */
 .stellar-wallets-kit:has(> section) {
   background: var(--overlay) !important;
 }
@@ -72,27 +72,8 @@
   background: var(--accent-soft) !important;
 }
 
-/* Onboarding / key dialog */
-.onboarding-overlay {
-  background: var(--overlay);
-}
-
-.onboarding-dialog {
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)) 0%,
-    var(--bg-elevated) 45%,
-    var(--bg-terminal) 100%
-  );
-  box-shadow:
-    0 24px 48px -12px var(--nav-shadow),
-    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.onboarding-dialog__mark {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-  background: var(--accent-soft);
+[data-theme="light"] .stellar-wallets-kit > section {
+  color: var(--text);
 }
 
 /* Toast shadow in light mode */
