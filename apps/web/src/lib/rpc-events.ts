@@ -35,6 +35,21 @@ function cacheKey(url: string, poolId: string): string {
   return `${url}:${poolId}`;
 }
 
+/** Soroban RPC throws plain `{ message }` objects, not `Error` instances. */
+export function rpcErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    if (typeof o.message === "string") return o.message;
+    if (o.error && typeof o.error === "object") {
+      const nested = (o.error as { message?: unknown }).message;
+      if (typeof nested === "string") return nested;
+    }
+  }
+  return String(err);
+}
+
 export function parseLedgerRangeError(message: string): RpcLedgerWindow | null {
   const match = LEDGER_RANGE_RE.exec(message);
   if (!match) return null;
@@ -45,8 +60,7 @@ export function parseLedgerRangeError(message: string): RpcLedgerWindow | null {
 }
 
 export function isLedgerRangeError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return LEDGER_RANGE_RE.test(msg);
+  return LEDGER_RANGE_RE.test(rpcErrorMessage(err));
 }
 
 /** Clamp a desired scan start into the range the RPC can serve. */
@@ -77,28 +91,26 @@ export async function probeLedgerWindow(
 
   const rpc = rpcServer(rpcUrl);
   const latestSeq = (await rpc.getLatestLedger()).sequence;
-
-  let oldest: number;
-  let latest = latestSeq;
+  const probeStart = Math.max(latestSeq - 100, 1);
 
   try {
     const page = await rpc.getEvents({
-      startLedger: 1,
+      startLedger: probeStart,
       filters: [poolContractEventFilter(poolId)],
       limit: 1,
     });
-    oldest = page.oldestLedger ?? 1;
-    latest = page.latestLedger ?? latestSeq;
+    const oldest = page.oldestLedger ?? probeStart;
+    const latest = page.latestLedger ?? latestSeq;
+    const window: RpcLedgerWindow = { oldest, latest, rpcUrl };
+    windowCache.set(key, { at: Date.now(), window });
+    return window;
   } catch (err) {
-    const parsed = parseLedgerRangeError(err instanceof Error ? err.message : String(err));
+    const parsed = parseLedgerRangeError(rpcErrorMessage(err));
     if (!parsed) throw err;
-    oldest = parsed.oldest;
-    latest = parsed.latest;
+    const window: RpcLedgerWindow = { oldest: parsed.oldest, latest: parsed.latest, rpcUrl };
+    windowCache.set(key, { at: Date.now(), window });
+    return window;
   }
-
-  const window: RpcLedgerWindow = { oldest, latest, rpcUrl };
-  windowCache.set(key, { at: Date.now(), window });
-  return window;
 }
 
 export function uniqueRpcUrls(config: NetworkConfig): string[] {
@@ -141,7 +153,10 @@ async function pickBestEventsRpcUrl(
     const pool = covering.length > 0 ? covering : windows;
     pool.sort((a, b) => a.oldest - b.oldest || a.latest - b.latest);
     return pool[0].rpcUrl;
-  })();
+  })().catch((err) => {
+    eventsRpcPickCache.delete(cacheKeyStr);
+    throw err;
+  });
 
   eventsRpcPickCache.set(cacheKeyStr, promise);
   return promise;
@@ -198,7 +213,7 @@ export async function fetchAllContractEvents(
     return await fetchAllContractEventsOnce(rpcClient, filter, range, limit);
   } catch (err) {
     if (!ctx || !isLedgerRangeError(err)) throw err;
-    const parsed = parseLedgerRangeError(err instanceof Error ? err.message : String(err));
+    const parsed = parseLedgerRangeError(rpcErrorMessage(err));
     if (!parsed) throw err;
     const window: RpcLedgerWindow = { oldest: parsed.oldest, latest: parsed.latest, rpcUrl: ctx.rpcUrl };
     windowCache.set(cacheKey(ctx.rpcUrl, ctx.poolId), { at: Date.now(), window });
