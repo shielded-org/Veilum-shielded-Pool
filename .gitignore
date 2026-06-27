@@ -1,6 +1,7 @@
 .env
 services/relayer/.env
 node_modules/
+package-lock.json
 .toolchain/
 target/
 **/target/

@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "cd ../.. && npm install",
-  "buildCommand": "npm run build",
+  "installCommand": "cd ../.. && yarn install --frozen-lockfile",
+  "buildCommand": "cd ../.. && yarn workspace @stellar-shielded/web build",
   "outputDirectory": "dist",
   "rewrites": [
     {
