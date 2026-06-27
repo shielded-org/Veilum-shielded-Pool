@@ -2,6 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { buildOrderedLeavesFromPool } from "./merkle-rebuild.js";
+import {
+  ledgerLowerBound,
+  ledgerUpperBound,
+  normalizeChannelParam,
+  rebuildRoutesByChannel,
+} from "./event-channel.js";
 
 function eventKey(ev) {
   if (ev.id) return ev.id;
@@ -52,12 +58,29 @@ export function createEventStore(dataDir) {
       };
     },
 
-    queryEvents(poolId, fromLedger, toLedger) {
+    queryEvents(poolId, fromLedger, toLedger, channel) {
       const pool = this.getPool(poolId);
       if (!pool?.events?.length) return [];
       const from = Number(fromLedger) || 0;
       const to = Number(toLedger) || Number.MAX_SAFE_INTEGER;
-      return pool.events.filter((e) => e.ledger >= from && e.ledger <= to);
+      const channelHex = normalizeChannelParam(channel);
+      if (channelHex) {
+        return this.queryRouteEventsByChannel(pool, channelHex, from, to);
+      }
+      const start = ledgerLowerBound(pool.events, from);
+      const end = ledgerUpperBound(pool.events, to);
+      return pool.events.slice(start, end);
+    },
+
+    queryRouteEventsByChannel(pool, channelHex, fromLedger, toLedger) {
+      const routesByChannel = pool.routesByChannel ?? rebuildRoutesByChannel(pool.events ?? []);
+      const channelEvents = routesByChannel[channelHex] ?? [];
+      if (channelEvents.length === 0) return [];
+      const from = Number(fromLedger) || 0;
+      const to = Number(toLedger) || Number.MAX_SAFE_INTEGER;
+      const start = ledgerLowerBound(channelEvents, from);
+      const end = ledgerUpperBound(channelEvents, to);
+      return channelEvents.slice(start, end);
     },
 
     mergeEvents(poolId, deployLedger, newEvents, lastIndexedLedger) {
@@ -77,10 +100,12 @@ export function createEventStore(dataDir) {
           a.transactionIndex - b.transactionIndex ||
           a.operationIndex - b.operationIndex
       );
+      const routesByChannel = rebuildRoutesByChannel(merged);
       data.pools[poolId] = {
         deployLedger: deployLedger ?? data.pools[poolId]?.deployLedger ?? null,
         lastIndexedLedger,
         events: merged,
+        routesByChannel,
         txLeaves: data.pools[poolId]?.txLeaves ?? {},
         orderedLeaves: data.pools[poolId]?.orderedLeaves ?? [],
         merkleLeafCount: data.pools[poolId]?.merkleLeafCount ?? 0,
