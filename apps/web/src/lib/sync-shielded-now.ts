@@ -1,19 +1,21 @@
 import { getDefaultStore } from "jotai";
 
 import { loadNetworkConfig } from "./config";
+import { clearSessionNotes, readSessionNotes, writeSessionNotes } from "./note-session-cache";
 import { scanCacheKey } from "./scan-cache";
 import { scanDebug, scanDebugWarn } from "./scan-debug";
+import { filterUserSyncWarnings } from "./sync-warnings";
 import { formatWalletError } from "./wallet-kit";
 import { refreshShieldedWallet } from "./wallet-sync";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
 
-/** Poll interval for background re-scan (always full chain scan). */
+/** Poll interval for background re-scan (incremental when cache is warm). */
 export const BACKGROUND_POLL_MS = 60_000;
 
 let syncRunning = false;
 let rerunWhenDone = false;
-/** Bumped on wallet/key change or effect cleanup — stale scans must not apply. */
+/** Bumped on wallet/key change — stale scans must not apply. */
 let applyGeneration = 0;
 
 function bumpApplyGeneration(): void {
@@ -21,7 +23,7 @@ function bumpApplyGeneration(): void {
 }
 
 /**
- * Single wallet sync entry point. Always runs one full on-chain note scan.
+ * Single wallet sync entry point. Uses indexer + incremental cache when warm.
  * Concurrent calls coalesce into a single follow-up scan after the current one.
  */
 export async function syncShieldedWalletNow(options?: {
@@ -74,7 +76,6 @@ async function runFullScan(
     state.setScanRefreshing(true);
   } else if (initial) {
     state.setSyncError(null);
-    if (state.notes.length === 0) state.setScanLoading(true);
   }
 
   try {
@@ -83,7 +84,19 @@ async function runFullScan(
     const deployLedger = config.contracts.deployLedger;
     const cacheKey = scanCacheKey(state.network, poolId, state.viewingPub, deployLedger);
     const priorCache = state.getScanCacheEntry(cacheKey);
-    const metadataNotes = state.notes;
+    let metadataNotes = state.notes;
+
+    if (metadataNotes.length === 0) {
+      const sessionNotes = readSessionNotes(cacheKey);
+      if (sessionNotes?.length) {
+        state.setNotes(sessionNotes);
+        metadataNotes = sessionNotes;
+        scanDebug("sync:sessionRestored", { count: sessionNotes.length });
+      }
+    }
+
+    const showInitialLoading = initial && metadataNotes.length === 0;
+    if (showInitialLoading) state.setScanLoading(true);
 
     const result = await refreshShieldedWallet({
       network: state.network,
@@ -95,6 +108,7 @@ async function runFullScan(
       priorScanCache: priorCache,
       routeCursor: state.routeCursor,
       syncMerkle: options.syncMerkle ?? false,
+      background,
     });
 
     if (applyGen !== applyGeneration) {
@@ -102,26 +116,33 @@ async function runFullScan(
       return;
     }
 
-    if (result.noteScanComplete) {
-      const prev = state.notes.length;
-      if (result.notes.length > 0 || prev === 0) {
-        state.setNotes(result.notes);
-      }
+    const userWarnings = filterUserSyncWarnings(result.warnings);
+    const prevCount = state.notes.length;
+    const shouldApplyNotes =
+      result.notes.length > 0 &&
+      (result.noteScanComplete || result.notes.length >= prevCount || prevCount === 0);
+
+    if (shouldApplyNotes) {
+      state.setNotes(result.notes);
+      writeSessionNotes(cacheKey, result.notes);
       scanDebug("sync:applied", {
-        prev,
+        prev: prevCount,
         next: result.notes.length,
         storeAfter: useShieldedStore.getState().notes.length,
         channelMatched: result.channelMatched,
         routeEventsScanned: result.routeEventsScanned,
+        noteScanComplete: result.noteScanComplete,
       });
-      state.setSyncWarnings(result.warnings);
+      state.setSyncWarnings(userWarnings);
+    } else if (result.noteScanComplete) {
+      state.setSyncWarnings(userWarnings);
     } else {
       scanDebugWarn("sync:skippedApply", {
         warnings: result.warnings,
         routeEventsScanned: result.routeEventsScanned,
       });
-      if (!background || state.notes.length === 0) {
-        state.setSyncWarnings(result.warnings);
+      if (!background || prevCount === 0) {
+        state.setSyncWarnings(userWarnings);
       }
     }
 

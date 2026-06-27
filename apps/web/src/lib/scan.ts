@@ -9,9 +9,10 @@ import {
   isLedgerRangeError,
   probeLedgerWindow,
   resolveScanLedgerRange,
+  rpcErrorMessage,
   type RpcLedgerWindow,
 } from "./rpc-events";
-import { scanDebug } from "./scan-debug";
+import { scanDebug, scanDebugWarn } from "./scan-debug";
 import { nullifierSpent } from "./soroban";
 import type { DecryptedNote, Hex32, NetworkConfig } from "./types";
 import { bytes32Arg, parseHex32 } from "./utils";
@@ -380,6 +381,64 @@ function dedupeNotes(notes: DecryptedNote[]): DecryptedNote[] {
   return Array.from(dedup.values());
 }
 
+/** Decrypt route events already fetched from the indexer (no RPC tail). */
+export async function scanPrefetchedIndexerEvents(
+  indexerEvents: Api.EventResponse[],
+  scanFrom: number,
+  endLedger: number,
+  viewingPriv: bigint,
+  options: Pick<ScanRouteOptions, "tokenFieldFilter" | "onProgress"> = {}
+): Promise<ScanRouteResult> {
+  let lastScannedLedger = Math.max(scanFrom - 1, 0);
+  const batch: RouteEvent[] = [];
+  for (const ev of indexerEvents) {
+    lastScannedLedger = Math.max(lastScannedLedger, ev.ledger);
+    const encrypted = encryptedNoteFromValue(ev.value);
+    if (!encrypted) continue;
+    batch.push({ txHash: ev.txHash, encryptedNoteHex: encrypted, ledger: ev.ledger });
+  }
+  const notes = await decryptRouteBatch(batch, viewingPriv, options.tokenFieldFilter);
+  if (indexerEvents.length === 0) lastScannedLedger = endLedger;
+  options.onProgress?.({
+    pages: 1,
+    eventsScanned: indexerEvents.length,
+    channelMatched: batch.length,
+    notesFound: notes.length,
+  });
+  return {
+    notes: dedupeNotes(notes),
+    lastScannedLedger,
+    eventsScanned: indexerEvents.length,
+    channelMatched: batch.length,
+  };
+}
+
+async function fetchRpcRouteEvents(
+  rpcClient: SorobanRpc,
+  poolId: string,
+  scanFrom: number,
+  endLedger: number,
+  fetchCtx: { rpcUrl: string; poolId: string } | undefined
+): Promise<Api.EventResponse[]> {
+  try {
+    return await fetchAllContractEvents(
+      rpcClient,
+      poolContractEventFilter(poolId),
+      { scanFrom, endLedger },
+      PAGE_LIMIT,
+      fetchCtx
+    );
+  } catch (err) {
+    if (!isLedgerRangeError(err)) throw err;
+    scanDebugWarn("loadRouteEvents:rpcTailSkipped", {
+      error: rpcErrorMessage(err),
+      scanFrom,
+      endLedger,
+    });
+    return [];
+  }
+}
+
 async function loadRouteEvents(
   rpcClient: SorobanRpc,
   poolId: string,
@@ -400,13 +459,7 @@ async function loadRouteEvents(
       if (rpcFrom > endLedger) {
         return options.indexerEvents;
       }
-      const rpcTail = await fetchAllContractEvents(
-        rpcClient,
-        poolContractEventFilter(poolId),
-        { scanFrom: rpcFrom, endLedger },
-        PAGE_LIMIT,
-        fetchCtx
-      );
+      const rpcTail = await fetchRpcRouteEvents(rpcClient, poolId, rpcFrom, endLedger, fetchCtx);
       return mergeContractEvents(options.indexerEvents, rpcTail);
     }
     return options.indexerEvents;
@@ -419,13 +472,7 @@ async function loadRouteEvents(
 
   return mergeContractEvents(
     options.archivedEvents ?? [],
-    await fetchAllContractEvents(
-      rpcClient,
-      poolContractEventFilter(poolId),
-      { scanFrom: rpcFrom, endLedger },
-      PAGE_LIMIT,
-      fetchCtx
-    )
+    await fetchRpcRouteEvents(rpcClient, poolId, rpcFrom, endLedger, fetchCtx)
   );
 }
 

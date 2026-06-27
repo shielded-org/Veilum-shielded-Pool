@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import type { DecryptedNote, Hex32, NetworkName, TransactionRecord } from "../lib/types";
 import { attachLeafIndices } from "../lib/merkle-sync";
 import { mergeNotes, shieldedTotal } from "../lib/note-store";
+import { clearSessionNotes } from "../lib/note-session-cache";
 import { traceNotesUpdate } from "../lib/notes-trace";
 import type { StoredScanCacheRow } from "../lib/scan-cache";
 import { payloadToStoredRow } from "../lib/scan-cache";
@@ -84,7 +85,8 @@ export const useShieldedStore = create<ShieldedState>()(
       onboardingDismissed: false,
       scanCacheByPool: {},
       setNetwork: (network) => set({ network }),
-      setKeys: (keys) =>
+      setKeys: (keys) => {
+        clearSessionNotes();
         set({
           spendingKey: keys.spendingKey.toString(),
           viewingKey: keys.viewingPriv.toString(),
@@ -92,8 +94,10 @@ export const useShieldedStore = create<ShieldedState>()(
           ownerPk: keys.ownerPk,
           keyMaterialAddress: keys.address,
           scanCacheByPool: {},
-        }),
-      clearKeys: () =>
+        });
+      },
+      clearKeys: () => {
+        clearSessionNotes();
         set({
           spendingKey: "",
           viewingKey: "",
@@ -103,8 +107,10 @@ export const useShieldedStore = create<ShieldedState>()(
           notes: [],
           shieldedBalance: 0n,
           scanCacheByPool: {},
-        }),
-      resetWalletSession: () =>
+        });
+      },
+      resetWalletSession: () => {
+        clearSessionNotes();
         set({
           spendingKey: "",
           viewingKey: "",
@@ -121,7 +127,8 @@ export const useShieldedStore = create<ShieldedState>()(
           syncWarnings: [],
           transactions: [],
           scanCacheByPool: {},
-        }),
+        });
+      },
       setNotes: (notes) => {
         const prev = get().notes;
         traceNotesUpdate("store:setNotes", prev, notes);

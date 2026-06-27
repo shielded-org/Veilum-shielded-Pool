@@ -5,11 +5,12 @@ import { attachLeafIndices } from "./merkle-sync";
 import { reconcileChainNotes, shieldedTotal } from "./note-store";
 import { fetchIndexerPoolStatus, tryFetchIndexerRouteEvents } from "./pool-indexer";
 import type { ScanCachePayload } from "./scan-cache";
-import { resolveNoteSpendStatus, scanRouteEvents } from "./scan";
+import { pickRefreshMode, sanitizeScanCache } from "./scan-cache";
+import { resolveNoteSpendStatus, scanPrefetchedIndexerEvents, scanRouteEvents } from "./scan";
 import { scanDebug, scanDebugWarn, scanRpcLabel } from "./scan-debug";
 import { fetchMerkleLeaves } from "./shield-ops";
 import { createRpc } from "./soroban";
-import { pickEventsRpc, resolveScanLedgerRange, isLedgerRangeError, type RpcLedgerWindow } from "./rpc-events";
+import { pickEventsRpc, probeLedgerWindow, resolveScanLedgerRange, isLedgerRangeError, type RpcLedgerWindow } from "./rpc-events";
 import { useShieldedStore } from "../store/use-shielded-store";
 import type { DecryptedNote, Hex32, NetworkName } from "./types";
 import { bytes32Arg } from "./utils";
@@ -38,6 +39,8 @@ export async function refreshShieldedWallet(params: {
   priorScanCache?: ScanCachePayload | null;
   routeCursor?: number;
   syncMerkle?: boolean;
+  /** Background poll — skip heavy nullifier re-check when nothing new. */
+  background?: boolean;
   onScanProgress?: (found: number, eventsScanned: number) => void;
 }): Promise<WalletRefreshResult> {
   const warnings: string[] = [];
@@ -82,30 +85,58 @@ export async function refreshShieldedWallet(params: {
     warnings.push(`Could not resolve RPC event window: ${errMsg(e)}`);
   }
 
-  const scanFromLedger =
+  const sanitizedCache = sanitizeScanCache(params.priorScanCache, ledgerWindow, deployLedger);
+  const refreshMode = pickRefreshMode(sanitizedCache, {
+    hasNotes: metadataNotes.length > 0,
+    hasUnspentNotes: metadataNotes.some((n) => !n.spent),
+    deployLedger,
+  });
+
+  const historyFrom =
     poolDeployLedger ??
     indexerStatus?.oldestStoredLedger ??
     deployLedger ??
     ledgerWindow?.oldest ??
     1;
-  let lastScannedLedger = scanFromLedger - 1;
+
+  let eventScanFrom = historyFrom;
+  if (
+    refreshMode === "incremental" &&
+    sanitizedCache?.lastScannedLedger != null &&
+    ledgerWindow
+  ) {
+    eventScanFrom = Math.max(
+      sanitizedCache.lastScannedLedger + 1,
+      ledgerWindow.oldest,
+      indexerStatus?.oldestStoredLedger ?? 0,
+      historyFrom
+    );
+  }
+
+  let lastScannedLedger = Math.max(eventScanFrom - 1, sanitizedCache?.lastScannedLedger ?? 0);
 
   if (ledgerWindow && indexerStatus?.lastIndexedLedger != null) {
     const indexerTo = Math.min(indexerStatus.lastIndexedLedger, ledgerWindow.latest);
-    if (scanFromLedger <= indexerTo) {
+    if (eventScanFrom <= indexerTo) {
       const fetched = await tryFetchIndexerRouteEvents(
         poolId,
-        scanFromLedger,
+        eventScanFrom,
         indexerTo,
         viewingChannelHex
       );
       if (fetched.reachable) {
         indexerEvents = fetched.events;
         archivedIndexerEvents = fetched.events;
-        if (indexerStatus.lastIndexedLedger < ledgerWindow.latest) {
+        const lag = ledgerWindow.latest - indexerStatus.lastIndexedLedger;
+        if (lag > 0 && lag <= 8) {
+          indexerChannelFiltered = fetched.channelFiltered;
+        } else if (indexerStatus.lastIndexedLedger < ledgerWindow.latest) {
+          ledgerWindow = await probeLedgerWindow(ledgerWindow.rpcUrl, poolId, { force: true });
           const tailFrom = Math.max(ledgerWindow.oldest, indexerStatus.lastIndexedLedger + 1);
           if (tailFrom <= ledgerWindow.latest) {
             indexerTailFrom = tailFrom;
+          } else {
+            indexerChannelFiltered = fetched.channelFiltered;
           }
         } else {
           indexerChannelFiltered = fetched.channelFiltered;
@@ -114,12 +145,13 @@ export async function refreshShieldedWallet(params: {
           indexerChannelFiltered = fetched.channelFiltered;
         }
         scanDebug("refresh:indexerChannel", {
-          from: scanFromLedger,
+          from: eventScanFrom,
           to: indexerTo,
           count: fetched.events.length,
           tailFrom: indexerTailFrom ?? null,
           rpcOldest: ledgerWindow.oldest,
           lastIndexedLedger: indexerStatus.lastIndexedLedger,
+          refreshMode,
         });
       }
     }
@@ -128,7 +160,9 @@ export async function refreshShieldedWallet(params: {
   scanDebug("refresh:scanPlan", {
     deployLedger: deployLedger ?? null,
     poolDeployLedger,
-    scanFromLedger,
+    eventScanFrom,
+    historyFrom,
+    refreshMode,
     endLedger: ledgerWindow?.latest ?? null,
     rpcOldest: ledgerWindow?.oldest ?? null,
     eventsRpc: ledgerWindow?.rpcUrl ? scanRpcLabel(ledgerWindow.rpcUrl) : null,
@@ -151,12 +185,12 @@ export async function refreshShieldedWallet(params: {
       scanSkipped = true;
       warnings.push("Note scan skipped: RPC event window unavailable");
     } else {
-      const range = resolveScanLedgerRange(scanFromLedger, ledgerWindow);
+      const range = resolveScanLedgerRange(eventScanFrom, ledgerWindow);
       if (range.scanFrom > range.endLedger && indexerEvents === undefined) {
         scanSkipped = true;
         lastScannedLedger = range.endLedger;
       } else {
-        const delta = await scanRouteEvents(eventsRpc, poolId, scanFromLedger, viewingPriv, params.viewingPub, {
+        const delta = await scanRouteEvents(eventsRpc, poolId, eventScanFrom, viewingPriv, params.viewingPub, {
           indexedRouteEvents,
           routeCursor: params.routeCursor ?? 0,
           ledgerWindow,
@@ -180,9 +214,32 @@ export async function refreshShieldedWallet(params: {
     }
   } catch (e) {
     const msg = errMsg(e);
-    const hasLocalNotes = metadataNotes.some((n) => !n.spent);
-    if (hasLocalNotes && isLedgerRangeError(e)) {
-      scanDebugWarn("refresh:scanFailedRetained", { error: msg });
+    if (isLedgerRangeError(e)) {
+      scanDebugWarn("refresh:scanLedgerRange", { error: msg });
+      if (indexerEvents !== undefined && indexerEvents.length > 0 && ledgerWindow) {
+        try {
+          const endLedger = ledgerWindow.latest;
+          const recovered = await scanPrefetchedIndexerEvents(
+            indexerEvents,
+            eventScanFrom,
+            endLedger,
+            viewingPriv,
+            {
+              onProgress: (p) => {
+                routeEventsScanned = p.eventsScanned;
+                channelMatched = p.channelMatched;
+                params.onScanProgress?.(p.notesFound, p.eventsScanned);
+              },
+            }
+          );
+          routeEventsScanned = recovered.eventsScanned;
+          channelMatched = recovered.channelMatched;
+          lastScannedLedger = Math.max(lastScannedLedger, recovered.lastScannedLedger);
+          chainNotes = reconcileChainNotes(recovered.notes, metadataNotes);
+        } catch (recoverErr) {
+          scanDebugWarn("refresh:indexerRecoverFailed", { error: errMsg(recoverErr) });
+        }
+      }
     } else {
       warnings.push(`Note scan failed: ${msg}`);
     }
@@ -203,16 +260,26 @@ export async function refreshShieldedWallet(params: {
     scanSkipped,
     routeEventsScanned,
     channelMatched,
+    notesFound: chainNotes.length,
   });
 
-  const notesWithSpend = await resolveAllNoteSpendStatus(
-    rpc,
-    config,
-    poolId,
-    params.wallet,
-    chainNotes,
-    spending
-  );
+  const skipNullifierRefresh =
+    (params.background ?? false) &&
+    refreshMode === "incremental" &&
+    chainNotes.length === metadataNotes.length &&
+    metadataNotes.length > 0;
+
+  const notesWithSpend = skipNullifierRefresh
+    ? metadataNotes
+    : await resolveAllNoteSpendStatus(
+        rpc,
+        config,
+        poolId,
+        params.wallet,
+        chainNotes,
+        spending,
+        metadataNotes
+      );
 
   let merkleLeaves: Hex32[] = [];
   const syncMerkle = params.syncMerkle ?? false;
@@ -285,8 +352,10 @@ function noteScanSucceeded(params: {
   scanSkipped: boolean;
   routeEventsScanned: number;
   channelMatched: number;
+  notesFound: number;
 }): boolean {
   if (params.scanSkipped) return false;
+  if (params.notesFound > 0) return true;
   if (params.routeEventsScanned > 0) return true;
   return params.channelMatched > 0;
 }
@@ -297,24 +366,36 @@ async function resolveAllNoteSpendStatus(
   poolId: string,
   wallet: string,
   notes: DecryptedNote[],
-  spending: bigint
+  spending: bigint,
+  priorNotes: DecryptedNote[]
 ): Promise<DecryptedNote[]> {
   if (notes.length === 0) return [];
 
+  const priorById = new Map(priorNotes.map((n) => [n.id, n]));
+  const needsCheck = notes.filter((n) => {
+    const prior = priorById.get(n.id);
+    return !prior || prior.nullifier == null;
+  });
+
+  if (needsCheck.length === 0) {
+    return notes.map((n) => priorById.get(n.id) ?? n);
+  }
+
   try {
     const hasher = await getBrowserPoseidonHasher();
-    // Always check on-chain nullifiers — local `spent` is optimistic and may be wrong.
-    return await resolveNoteSpendStatus(
+    const checked = await resolveNoteSpendStatus(
       rpc,
       config,
       poolId,
       wallet,
-      notes,
+      needsCheck,
       spending,
       (sk, c) => nullifier(hasher, sk, c)
     );
+    const checkedById = new Map(checked.map((n) => [n.id, n]));
+    return notes.map((n) => checkedById.get(n.id) ?? priorById.get(n.id) ?? n);
   } catch {
-    return notes.map((n) => ({ ...n, spent: n.spent ?? false }));
+    return notes.map((n) => ({ ...n, spent: priorById.get(n.id)?.spent ?? n.spent ?? false }));
   }
 }
 

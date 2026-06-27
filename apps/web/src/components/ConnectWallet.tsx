@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchRelayerHealth } from "../lib/relayer";
 import {
@@ -34,9 +34,10 @@ export function ConnectWallet() {
   );
 }
 
-/** One sync loop: initial full scan + periodic full re-scan. No incremental / no parallel paths. */
+/** Sync loop: indexer scan + session cache + incremental refresh on warm cache. */
 export function useShieldedSync() {
   const [hydrated, setHydrated] = useState(() => useShieldedStore.persist.hasHydrated());
+  const identityRef = useRef<string | null>(null);
   const { address: wallet } = useWallet();
   const viewingKey = useShieldedStore((s) => s.viewingKey);
   const viewingPub = useShieldedStore((s) => s.viewingPub);
@@ -84,6 +85,12 @@ export function useShieldedSync() {
       return;
     }
 
+    const identity = `${wallet}:${viewingPub}:${viewingKey}:${spendingKey}`;
+    if (identityRef.current && identityRef.current !== identity) {
+      invalidateShieldedSync();
+    }
+    identityRef.current = identity;
+
     scanDebug("sync:mount", { walletPrefix: `${wallet.slice(0, 8)}…` });
     void syncShieldedWalletNow({ initial: true });
 
@@ -99,7 +106,6 @@ export function useShieldedSync() {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      invalidateShieldedSync();
       window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
     };
