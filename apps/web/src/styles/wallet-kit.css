@@ -37,3 +37,38 @@
 .stellar-wallets-kit [class*="footer"] {
   opacity: 0.72;
 }
+
+/* Light mode: reinforce kit CSS vars when theme was reset before modal open */
+[data-theme="light"] {
+  --swk-background: oklch(100% 0.006 90);
+  --swk-background-secondary: oklch(97% 0.008 90);
+  --swk-foreground-strong: oklch(18% 0.02 75);
+  --swk-foreground: oklch(22% 0.02 75);
+  --swk-foreground-secondary: oklch(42% 0.02 75);
+  --swk-primary: oklch(48% 0.14 175);
+  --swk-primary-foreground: oklch(99% 0.006 90);
+  --swk-lighter: oklch(97% 0.008 90);
+  --swk-light: oklch(94% 0.01 200);
+  --swk-light-gray: oklch(55% 0.02 75);
+  --swk-gray: oklch(42% 0.02 75);
+  --swk-danger: oklch(50% 0.16 25);
+  --swk-border: oklch(88% 0.012 75);
+  --swk-shadow: 0 20px 40px -12px oklch(20% 0.02 75 / 0.15), 0 0 0 1px oklch(48% 0.14 175 / 0.1);
+}
+
+[data-theme="dark"] {
+  --swk-background: oklch(13% 0.014 75);
+  --swk-background-secondary: oklch(8% 0.012 75);
+  --swk-foreground-strong: oklch(96% 0.01 90);
+  --swk-foreground: oklch(96% 0.01 90);
+  --swk-foreground-secondary: oklch(68% 0.02 90);
+  --swk-primary: oklch(78% 0.14 175);
+  --swk-primary-foreground: oklch(8% 0.012 75);
+  --swk-lighter: oklch(13% 0.014 75);
+  --swk-light: oklch(11% 0.02 200);
+  --swk-light-gray: oklch(52% 0.02 90);
+  --swk-gray: oklch(68% 0.02 90);
+  --swk-danger: oklch(62% 0.18 25);
+  --swk-border: oklch(24% 0.015 75 / 0.85);
+  --swk-shadow: 0 24px 48px -12px oklch(0% 0 0 / 0.55), 0 0 0 1px oklch(78% 0.14 175 / 0.12);
+}
