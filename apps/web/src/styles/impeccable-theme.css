@@ -18,7 +18,7 @@
 }
 
 .landing-nav--scrolled {
-  background: oklch(8% 0.012 75 / 0.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   border-bottom-color: var(--border-subtle);
   backdrop-filter: none;
   box-shadow: none;
@@ -469,13 +469,13 @@
 
 .alert-banner--warn {
   background: var(--warning-soft);
-  border-color: oklch(78% 0.12 85 / 0.3);
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
   color: var(--warning);
 }
 
 .alert-banner--error {
   background: var(--error-soft);
-  border-color: oklch(62% 0.18 25 / 0.3);
+  border-color: color-mix(in srgb, var(--error) 28%, var(--border));
   color: var(--error);
 }
 
@@ -933,8 +933,8 @@
 }
 
 .form-notice--public {
-  border-color: oklch(74% 0.11 65 / 0.35);
-  background: linear-gradient(135deg, var(--signal-public-soft) 0%, var(--bg-terminal) 58%);
+  border-color: color-mix(in srgb, var(--signal-public) 22%, var(--border));
+  background: var(--bg-elevated);
 }
 
 .form-notice--public .form-notice__label {
@@ -1063,16 +1063,18 @@
 }
 
 .withdraw-summary .transfer-summary__row strong {
-  color: var(--signal-public);
+  color: var(--accent);
 }
 
 .withdraw-form__submit {
-  background: var(--signal-public);
-  color: oklch(12% 0.02 75);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
 }
 
 .withdraw-form__submit:hover:not(:disabled) {
-  background: oklch(68% 0.11 65);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .withdraw-asp-status {
