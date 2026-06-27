@@ -1,0 +1,165 @@
+/* Dashboard light mode — clean surfaces matching landing lp-card aesthetic */
+
+[data-theme="light"] .dashboard-shell .alert-banner,
+[data-theme="light"] .dashboard-page .alert-banner {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .dashboard-shell .alert-banner--warn,
+[data-theme="light"] .dashboard-page .alert-banner--warn {
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+}
+
+[data-theme="light"] .dashboard-shell .alert-banner--error,
+[data-theme="light"] .dashboard-page .alert-banner--error {
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--error) 55%, var(--border));
+}
+
+[data-theme="light"] .dashboard-shell .alert-banner strong,
+[data-theme="light"] .dashboard-page .alert-banner strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Privacy callouts — card style, not tinted panels */
+[data-theme="light"] .dashboard-shell .privacy-callout,
+[data-theme="light"] .dashboard-page .privacy-callout {
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout--public,
+[data-theme="light"] .dashboard-page .privacy-callout--public {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout--private,
+[data-theme="light"] .dashboard-page .privacy-callout--private {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 30%, var(--bg-elevated));
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__pill,
+[data-theme="light"] .dashboard-page .privacy-callout__pill {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__pill--public,
+[data-theme="light"] .dashboard-page .privacy-callout__pill--public {
+  background: var(--bg-terminal);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-subtle);
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__pill--private,
+[data-theme="light"] .dashboard-page .privacy-callout__pill--private {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  color: var(--accent);
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__icon,
+[data-theme="light"] .dashboard-page .privacy-callout__icon {
+  color: var(--text-muted);
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__body strong,
+[data-theme="light"] .dashboard-page .privacy-callout__body strong {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+[data-theme="light"] .dashboard-shell .privacy-callout__detail,
+[data-theme="light"] .dashboard-page .privacy-callout__detail {
+  color: var(--text-muted);
+}
+
+/* Form notices */
+[data-theme="light"] .dashboard-shell .form-notice,
+[data-theme="light"] .dashboard-page .form-notice {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .dashboard-shell .form-notice--testnet,
+[data-theme="light"] .dashboard-page .form-notice--testnet {
+  border-left: 3px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+
+[data-theme="light"] .dashboard-shell .form-notice--public .form-notice__label,
+[data-theme="light"] .dashboard-page .form-notice--public .form-notice__label {
+  color: var(--text-subtle);
+}
+
+/* Transfer / withdraw summary */
+[data-theme="light"] .dashboard-shell .transfer-summary,
+[data-theme="light"] .dashboard-page .transfer-summary {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .dashboard-shell .transfer-summary__row strong,
+[data-theme="light"] .dashboard-page .transfer-summary__row strong {
+  color: var(--accent);
+}
+
+/* Balance asset cards — warm white, not blue terminal */
+[data-theme="light"] .dashboard-shell .balance-item,
+[data-theme="light"] .dashboard-page .balance-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+[data-theme="light"] .dashboard-shell .balance-overview,
+[data-theme="light"] .dashboard-shell .portfolio-section,
+[data-theme="light"] .dashboard-shell .card,
+[data-theme="light"] .dashboard-page .card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  border-radius: 16px;
+}
+
+[data-theme="light"] .dashboard-shell .input,
+[data-theme="light"] .dashboard-shell input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] .dashboard-shell select,
+[data-theme="light"] .dashboard-shell textarea {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+[data-theme="light"] .dashboard-shell .token-picker__option {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+[data-theme="light"] .dashboard-shell .token-picker__option--active {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 50%, var(--bg-elevated));
+}
