@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 
 import { ConnectWallet, useShieldedSync } from "./ConnectWallet";
 import { ConnectPrompt } from "./ui/ConnectPrompt";
+import { KeyDerivationDialog } from "./ui/KeyDerivationDialog";
 import { NetworkBadge } from "./ui/NetworkBadge";
 import { OnboardingResumeLink, OnboardingWizard } from "./ui/OnboardingWizard";
 import { PageHeader } from "./ui/PageHeader";
 import { ServiceStatusPill } from "./ui/ServiceStatusPill";
+import { ThemeToggle } from "./ui/ThemeToggle";
 import {
   IconArrowRightCircle,
   IconHome,
@@ -19,23 +21,27 @@ import {
   IconX,
 } from "./ui/icons";
 import { useWallet } from "../hooks/use-wallet";
-import { WalletConnectionProvider, useWalletConnection } from "../hooks/use-wallet-connection";
+import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { isAspOperator } from "../lib/asp-admin";
 import { DASHBOARD_PAGE_META, dashboardNavGroups } from "../lib/dashboard-routes";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 export function DashboardLayout() {
-  return (
-    <WalletConnectionProvider>
-      <DashboardLayoutInner />
-    </WalletConnectionProvider>
-  );
+  return <DashboardLayoutInner />;
 }
 
 function DashboardLayoutInner() {
   useShieldedSync();
   const location = useLocation();
   const { address: wallet } = useWallet();
+  const {
+    busy,
+    error,
+    keySignOpen,
+    signKeys,
+    dismissKeySign,
+    markLeftDashboardForMarketing,
+  } = useWalletConnection();
   const network = useShieldedStore((s) => s.network);
   const notes = useShieldedStore((s) => s.notes);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
@@ -150,7 +156,13 @@ function DashboardLayoutInner() {
               <span className="nav-label">ASP operator</span>
             </Link>
           ) : null}
-          <Link to="/" onClick={closeNav}>
+          <Link
+            to="/"
+            onClick={() => {
+              markLeftDashboardForMarketing();
+              closeNav();
+            }}
+          >
             <IconHome size={18} />
             <span className="nav-label">Back to site</span>
           </Link>
@@ -172,7 +184,14 @@ function DashboardLayoutInner() {
             </button>
             <ol className="breadcrumb" aria-label="Breadcrumb">
               <li>
-                <Link to="/">Veilum</Link>
+                <Link
+                  to="/"
+                  onClick={() => {
+                    markLeftDashboardForMarketing();
+                  }}
+                >
+                  Veilum
+                </Link>
               </li>
               <li>
                 <span className="breadcrumb__current">{pageMeta.title}</span>
@@ -180,6 +199,7 @@ function DashboardLayoutInner() {
             </ol>
           </div>
           <div className="dashboard-topbar__actions">
+            <ThemeToggle />
             <ServiceStatusPill online={relayerOk} />
             <NetworkBadge network={network} />
             <ConnectWallet />
@@ -194,6 +214,14 @@ function DashboardLayoutInner() {
       </div>
 
       <OnboardingWizard />
+
+      <KeyDerivationDialog
+        open={keySignOpen}
+        busy={busy}
+        error={error}
+        onProceed={() => void signKeys()}
+        onCancel={dismissKeySign}
+      />
 
       <nav className="dashboard-bottom-nav" aria-label="Mobile navigation">
         {bottomNav.map(({ to, end, label, icon: Icon }) => (
