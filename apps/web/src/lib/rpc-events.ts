@@ -76,33 +76,27 @@ export async function probeLedgerWindow(
   }
 
   const rpc = rpcServer(rpcUrl);
-  const latest = await rpc.getLatestLedger();
-  let probeStart = Math.max(latest.sequence - 100, 1);
+  const latestSeq = (await rpc.getLatestLedger()).sequence;
 
-  let page: Awaited<ReturnType<SorobanRpc["getEvents"]>>;
+  let oldest: number;
+  let latest = latestSeq;
+
   try {
-    page = await rpc.getEvents({
-      startLedger: probeStart,
+    const page = await rpc.getEvents({
+      startLedger: 1,
       filters: [poolContractEventFilter(poolId)],
       limit: 1,
     });
+    oldest = page.oldestLedger ?? 1;
+    latest = page.latestLedger ?? latestSeq;
   } catch (err) {
     const parsed = parseLedgerRangeError(err instanceof Error ? err.message : String(err));
     if (!parsed) throw err;
-    probeStart = parsed.oldest;
-    page = await rpc.getEvents({
-      startLedger: probeStart,
-      filters: [poolContractEventFilter(poolId)],
-      limit: 1,
-    });
+    oldest = parsed.oldest;
+    latest = parsed.latest;
   }
 
-  const oldest = page.oldestLedger ?? probeStart;
-  const window: RpcLedgerWindow = {
-    oldest,
-    latest: page.latestLedger ?? latest.sequence,
-    rpcUrl,
-  };
+  const window: RpcLedgerWindow = { oldest, latest, rpcUrl };
   windowCache.set(key, { at: Date.now(), window });
   return window;
 }
@@ -130,7 +124,7 @@ async function pickBestEventsRpcUrl(
     const probes = await Promise.all(
       urls.map(async (url) => {
         try {
-          return await probeLedgerWindow(url, poolId);
+          return await probeLedgerWindow(url, poolId, { force: true });
         } catch {
           return null;
         }
@@ -191,12 +185,37 @@ export type ContractEventFilter = {
 /**
  * Paginate getEvents until the cursor is exhausted or we hit safety limits.
  * Do not stop on the first empty page — RPC cursors often skip sparse ledger ranges.
+ * Retries once when the RPC reports a moved ledger window (stale cache).
  */
 export async function fetchAllContractEvents(
   rpcClient: SorobanRpc,
   filter: ContractEventFilter,
   range: ScanLedgerRange,
-  limit = 200
+  limit = 200,
+  ctx?: { rpcUrl: string; poolId: string }
+): Promise<Api.EventResponse[]> {
+  try {
+    return await fetchAllContractEventsOnce(rpcClient, filter, range, limit);
+  } catch (err) {
+    if (!ctx || !isLedgerRangeError(err)) throw err;
+    const parsed = parseLedgerRangeError(err instanceof Error ? err.message : String(err));
+    if (!parsed) throw err;
+    const window: RpcLedgerWindow = { oldest: parsed.oldest, latest: parsed.latest, rpcUrl: ctx.rpcUrl };
+    windowCache.set(cacheKey(ctx.rpcUrl, ctx.poolId), { at: Date.now(), window });
+    const nextRange: ScanLedgerRange = {
+      scanFrom: Math.min(Math.max(range.scanFrom, parsed.oldest), parsed.latest),
+      endLedger: Math.min(Math.max(range.endLedger, parsed.oldest), parsed.latest),
+    };
+    if (nextRange.scanFrom > nextRange.endLedger) return [];
+    return await fetchAllContractEventsOnce(rpcClient, filter, nextRange, limit);
+  }
+}
+
+async function fetchAllContractEventsOnce(
+  rpcClient: SorobanRpc,
+  filter: ContractEventFilter,
+  range: ScanLedgerRange,
+  limit: number
 ): Promise<Api.EventResponse[]> {
   const events: Api.EventResponse[] = [];
   let cursor: string | undefined;

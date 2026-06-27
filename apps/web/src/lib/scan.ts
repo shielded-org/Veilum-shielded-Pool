@@ -388,6 +388,10 @@ async function loadRouteEvents(
   options: ScanRouteOptions
 ): Promise<Api.EventResponse[]> {
   const rpcOldest = options.ledgerWindow?.oldest;
+  const fetchCtx =
+    options.ledgerWindow?.rpcUrl != null
+      ? { rpcUrl: options.ledgerWindow.rpcUrl, poolId }
+      : undefined;
 
   if (options.indexerEvents !== undefined) {
     const tailFrom = options.indexerTailFrom;
@@ -400,7 +404,8 @@ async function loadRouteEvents(
         rpcClient,
         poolContractEventFilter(poolId),
         { scanFrom: rpcFrom, endLedger },
-        PAGE_LIMIT
+        PAGE_LIMIT,
+        fetchCtx
       );
       return mergeContractEvents(options.indexerEvents, rpcTail);
     }
@@ -418,7 +423,8 @@ async function loadRouteEvents(
       rpcClient,
       poolContractEventFilter(poolId),
       { scanFrom: rpcFrom, endLedger },
-      PAGE_LIMIT
+      PAGE_LIMIT,
+      fetchCtx
     )
   );
 }

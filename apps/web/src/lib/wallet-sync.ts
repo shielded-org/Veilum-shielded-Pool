@@ -9,7 +9,7 @@ import { resolveNoteSpendStatus, scanRouteEvents } from "./scan";
 import { scanDebug, scanDebugWarn, scanRpcLabel } from "./scan-debug";
 import { fetchMerkleLeaves } from "./shield-ops";
 import { createRpc } from "./soroban";
-import { pickEventsRpc, resolveScanLedgerRange, type RpcLedgerWindow } from "./rpc-events";
+import { pickEventsRpc, resolveScanLedgerRange, isLedgerRangeError, type RpcLedgerWindow } from "./rpc-events";
 import { useShieldedStore } from "../store/use-shielded-store";
 import type { DecryptedNote, Hex32, NetworkName } from "./types";
 import { bytes32Arg } from "./utils";
@@ -73,7 +73,7 @@ export async function refreshShieldedWallet(params: {
   const indexerStatus = await fetchIndexerPoolStatus(poolId);
 
   try {
-    const eventsHandle = await pickEventsRpc(config, poolId, deployLedger, { force: false });
+    const eventsHandle = await pickEventsRpc(config, poolId, deployLedger, { force: true });
     ledgerWindow = eventsHandle.window;
     eventsRpc = eventsHandle.rpc;
     poolDeployLedger =
@@ -107,8 +107,12 @@ export async function refreshShieldedWallet(params: {
           if (tailFrom <= ledgerWindow.latest) {
             indexerTailFrom = tailFrom;
           }
+        } else {
+          indexerChannelFiltered = fetched.channelFiltered;
         }
-        indexerChannelFiltered = fetched.channelFiltered && indexerTailFrom === undefined;
+        if (indexerTailFrom === undefined) {
+          indexerChannelFiltered = fetched.channelFiltered;
+        }
         scanDebug("refresh:indexerChannel", {
           from: scanFromLedger,
           to: indexerTo,
@@ -175,8 +179,14 @@ export async function refreshShieldedWallet(params: {
       }
     }
   } catch (e) {
-    warnings.push(`Note scan failed: ${errMsg(e)}`);
-    scanDebugWarn("refresh:scanFailed", { error: errMsg(e) });
+    const msg = errMsg(e);
+    const hasLocalNotes = metadataNotes.some((n) => !n.spent);
+    if (hasLocalNotes && isLedgerRangeError(e)) {
+      scanDebugWarn("refresh:scanFailedRetained", { error: msg });
+    } else {
+      warnings.push(`Note scan failed: ${msg}`);
+    }
+    scanDebugWarn("refresh:scanFailed", { error: msg });
   }
 
   scanDebug("refresh:scanDone", {

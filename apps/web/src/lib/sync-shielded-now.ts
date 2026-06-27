@@ -114,15 +114,18 @@ async function runFullScan(
         channelMatched: result.channelMatched,
         routeEventsScanned: result.routeEventsScanned,
       });
+      state.setSyncWarnings(result.warnings);
     } else {
       scanDebugWarn("sync:skippedApply", {
         warnings: result.warnings,
         routeEventsScanned: result.routeEventsScanned,
       });
+      if (!background || state.notes.length === 0) {
+        state.setSyncWarnings(result.warnings);
+      }
     }
 
     state.setMerkleLeaves(result.merkleLeaves);
-    state.setSyncWarnings(result.warnings);
     state.setScanCacheEntry(cacheKey, result.scanCacheOut);
   } catch (e) {
     if (applyGen === applyGeneration) {

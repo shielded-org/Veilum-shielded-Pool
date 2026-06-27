@@ -114,7 +114,9 @@ export async function syncMerkleLeaves(
       fetchAllContractEvents(
         rpc,
         { type: "contract", contractIds: [poolId] },
-        range
+        range,
+        200,
+        { rpcUrl: window.rpcUrl, poolId }
       )
     );
   } catch (err) {
@@ -126,7 +128,9 @@ export async function syncMerkleLeaves(
       fetchAllContractEvents(
         rpc,
         { type: "contract", contractIds: [poolId] },
-        range
+        range,
+        200,
+        { rpcUrl: window.rpcUrl, poolId }
       )
     );
   }
