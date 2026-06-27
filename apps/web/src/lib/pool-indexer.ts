@@ -1,5 +1,5 @@
 import type { Api } from "@stellar/stellar-sdk";
-import { xdr } from "@stellar/stellar-sdk";
+import { scValToNative, xdr } from "@stellar/stellar-sdk";
 
 import type { RpcLedgerWindow } from "./rpc-events";
 import { getServiceUrls } from "./service-urls";
@@ -34,6 +34,32 @@ function hydrateEvent(row: IndexedPoolEventRow): Api.EventResponse {
   };
 }
 
+/** Hydrate only fields needed to decrypt a channel-filtered route event. */
+function hydrateRouteEventValue(row: IndexedPoolEventRow): Api.EventResponse {
+  return {
+    type: "contract",
+    ledger: row.ledger,
+    ledgerClosedAt: row.ledgerClosedAt ?? "",
+    contractId: undefined,
+    id: row.id ?? row.txHash,
+    pagingToken: "",
+    topic: [],
+    value: row.value ? xdr.ScVal.fromXDR(row.value, "base64") : xdr.ScVal.scvVoid(),
+    txHash: row.txHash,
+    inSuccessfulContractCall: row.inSuccessfulContractCall ?? true,
+    transactionIndex: row.transactionIndex,
+    operationIndex: row.operationIndex,
+  };
+}
+
+export type IndexerPoolStatus = {
+  poolId: string;
+  deployLedger: number | null;
+  lastIndexedLedger: number | null;
+  eventCount: number;
+  oldestStoredLedger: number | null;
+};
+
 export async function fetchIndexerHealth(): Promise<{ ok: boolean; eventCount?: number }> {
   try {
     const { indexerUrl } = await getServiceUrls();
@@ -46,22 +72,90 @@ export async function fetchIndexerHealth(): Promise<{ ok: boolean; eventCount?: 
   }
 }
 
+/** Indexer coverage for a pool — used to choose ledger ranges for note scan. */
+export async function fetchIndexerPoolStatus(poolId: string): Promise<IndexerPoolStatus | null> {
+  try {
+    const { indexerUrl } = await getServiceUrls();
+    const statusRes = await fetch(
+      `${indexerUrl}/pool/${encodeURIComponent(poolId)}/status`,
+      { cache: "no-store" }
+    );
+    if (statusRes.ok) {
+      const body = (await statusRes.json()) as Partial<IndexerPoolStatus>;
+      return {
+        poolId: body.poolId ?? poolId,
+        deployLedger: body.deployLedger ?? null,
+        lastIndexedLedger: body.lastIndexedLedger ?? null,
+        eventCount: body.eventCount ?? 0,
+        oldestStoredLedger: body.oldestStoredLedger ?? null,
+      };
+    }
+    const healthRes = await fetch(`${indexerUrl}/health`, { cache: "no-store" });
+    if (!healthRes.ok) return null;
+    const health = (await healthRes.json()) as {
+      status?: Partial<IndexerPoolStatus>;
+    };
+    const st = health.status;
+    if (!st) return null;
+    return {
+      poolId: st.poolId ?? poolId,
+      deployLedger: st.deployLedger ?? null,
+      lastIndexedLedger: st.lastIndexedLedger ?? null,
+      eventCount: st.eventCount ?? 0,
+      oldestStoredLedger: st.oldestStoredLedger ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Archived pool contract events below the live RPC retention window. */
 export async function fetchIndexerPoolEvents(
   poolId: string,
   fromLedger: number,
-  toLedger: number
-): Promise<Api.EventResponse[]> {
+  toLedger: number,
+  channelHex?: string
+): Promise<{ events: Api.EventResponse[]; channelFiltered: boolean }> {
   const { indexerUrl } = await getServiceUrls();
   const url = new URL(`${indexerUrl}/pool/${encodeURIComponent(poolId)}/events`);
   url.searchParams.set("fromLedger", String(fromLedger));
   url.searchParams.set("toLedger", String(toLedger));
+  const normalizedChannel = channelHex?.replace(/^0x/i, "").toLowerCase();
+  if (normalizedChannel) {
+    url.searchParams.set("channel", normalizedChannel);
+  }
   const res = await fetch(url.toString(), { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Indexer events fetch failed (${res.status})`);
   }
-  const body = (await res.json()) as { events?: IndexedPoolEventRow[] };
-  return (body.events ?? []).map(hydrateEvent);
+  const body = (await res.json()) as {
+    events?: IndexedPoolEventRow[];
+    channel?: string | null;
+  };
+  const rows = body.events ?? [];
+  const serverFiltered = Boolean(normalizedChannel && body.channel);
+  if (serverFiltered) {
+    return { events: rows.map(hydrateRouteEventValue), channelFiltered: true };
+  }
+  if (!normalizedChannel) {
+    return { events: rows.map(hydrateEvent), channelFiltered: false };
+  }
+  const hydrated = rows.map(hydrateEvent);
+  return {
+    events: filterEventsByChannel(hydrated, normalizedChannel),
+    channelFiltered: true,
+  };
+}
+
+/** Route events for a viewing channel — indexer filters server-side (binary search on ledger). */
+export async function fetchIndexerChannelRouteEvents(
+  poolId: string,
+  channelHex: string,
+  fromLedger: number,
+  toLedger: number
+): Promise<Api.EventResponse[]> {
+  const { events } = await fetchIndexerPoolEvents(poolId, fromLedger, toLedger, channelHex);
+  return events;
 }
 
 /** Cached merkle leaf commitments per tx (from indexer). */
@@ -129,6 +223,38 @@ export async function fetchIndexerOrderedMerkleLeaves(
   }
 }
 
+/** Pool route events from the indexer for any ledger range. */
+export async function tryFetchIndexerRouteEvents(
+  poolId: string,
+  fromLedger: number,
+  toLedger: number,
+  channelHex?: string
+): Promise<{ events: Api.EventResponse[]; reachable: boolean; channelFiltered: boolean }> {
+  if (fromLedger > toLedger) {
+    return { events: [], reachable: true, channelFiltered: Boolean(channelHex) };
+  }
+  const cacheKey = `${poolId}:${channelHex ?? "all"}:${fromLedger}:${toLedger}`;
+  const hit = indexerEventsCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < INDEXER_EVENTS_CACHE_TTL_MS) {
+    return hit.result;
+  }
+  try {
+    const { events, channelFiltered } = await fetchIndexerEventsWithRetry(
+      poolId,
+      fromLedger,
+      toLedger,
+      channelHex
+    );
+    const result = { events, reachable: true, channelFiltered };
+    indexerEventsCache.set(cacheKey, { at: Date.now(), result });
+    return result;
+  } catch {
+    const result = { events: [], reachable: false, channelFiltered: false };
+    indexerEventsCache.set(cacheKey, { at: Date.now(), result });
+    return result;
+  }
+}
+
 /** Events below the live RPC retention window (archived by the indexer). */
 export async function tryFetchHistoryGapEvents(
   poolId: string,
@@ -138,40 +264,62 @@ export async function tryFetchHistoryGapEvents(
   if (!deployLedger || deployLedger <= 0 || deployLedger >= window.oldest) {
     return { events: [], reachable: true };
   }
-  const cacheKey = `${poolId}:${deployLedger}:${window.oldest}`;
-  const hit = gapCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < GAP_CACHE_TTL_MS) {
-    return hit.result;
+  return tryFetchIndexerRouteEvents(poolId, deployLedger, window.oldest - 1);
+}
+
+const INDEXER_EVENTS_CACHE_TTL_MS = 30_000;
+const INDEXER_FETCH_RETRIES = 3;
+const indexerEventsCache = new Map<
+  string,
+  {
+    at: number;
+    result: { events: Api.EventResponse[]; reachable: boolean; channelFiltered: boolean };
   }
+>();
+
+function bytes32FromTopic(topic: xdr.ScVal): string | null {
   try {
-    const events = await fetchGapWithRetry(poolId, deployLedger, window.oldest - 1);
-    const result = { events, reachable: true };
-    gapCache.set(cacheKey, { at: Date.now(), result });
-    return result;
+    const native = scValToNative(topic);
+    if (native instanceof Uint8Array) {
+      return Buffer.from(native).toString("hex").padStart(64, "0").slice(-64);
+    }
+    return null;
   } catch {
-    // Gap only matters for pre-RPC deploy ledgers; live notes use Soroban RPC directly.
-    const result = { events: [], reachable: true };
-    gapCache.set(cacheKey, { at: Date.now(), result });
-    return result;
+    return null;
   }
 }
 
-const GAP_CACHE_TTL_MS = 30_000;
-const GAP_FETCH_RETRIES = 3;
-const gapCache = new Map<string, { at: number; result: { events: Api.EventResponse[]; reachable: boolean } }>();
+function eventMatchesChannel(ev: Api.EventResponse, channelHex: string): boolean {
+  const topics = ev.topic ?? [];
+  if (topics.length < 2) return false;
+  try {
+    const name = scValToNative(topics[0]);
+    if (name !== "route") return false;
+    const ch = bytes32FromTopic(topics[1]);
+    return ch != null && ch.toLowerCase() === channelHex.replace(/^0x/i, "").toLowerCase();
+  } catch {
+    return false;
+  }
+}
 
-async function fetchGapWithRetry(
+function filterEventsByChannel(events: Api.EventResponse[], channelHex: string): Api.EventResponse[] {
+  const normalized = channelHex.replace(/^0x/i, "").toLowerCase();
+  return events.filter((ev) => eventMatchesChannel(ev, normalized));
+}
+
+async function fetchIndexerEventsWithRetry(
   poolId: string,
   fromLedger: number,
-  toLedger: number
-): Promise<Api.EventResponse[]> {
+  toLedger: number,
+  channelHex?: string
+): Promise<{ events: Api.EventResponse[]; channelFiltered: boolean }> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt < GAP_FETCH_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < INDEXER_FETCH_RETRIES; attempt++) {
     try {
-      return await fetchIndexerPoolEvents(poolId, fromLedger, toLedger);
+      return await fetchIndexerPoolEvents(poolId, fromLedger, toLedger, channelHex);
     } catch (err) {
       lastErr = err;
-      if (attempt < GAP_FETCH_RETRIES - 1) {
+      if (attempt < INDEXER_FETCH_RETRIES - 1) {
         await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       }
     }
