@@ -105,8 +105,8 @@ export function LandingFlowSection() {
         ))}
       </ol>
       <ScrollReveal as="div" className="landing-section__cta" variant="fade" delay={80}>
-        <Link to="/how-to-use" className="btn btn-secondary">
-          Step-by-step guide
+        <Link to="/about" className="btn btn-secondary">
+          About Veilum
         </Link>
       </ScrollReveal>
     </section>
