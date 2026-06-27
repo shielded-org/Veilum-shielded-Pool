@@ -387,13 +387,19 @@ async function loadRouteEvents(
   endLedger: number,
   options: ScanRouteOptions
 ): Promise<Api.EventResponse[]> {
+  const rpcOldest = options.ledgerWindow?.oldest;
+
   if (options.indexerEvents !== undefined) {
     const tailFrom = options.indexerTailFrom;
     if (tailFrom != null && tailFrom <= endLedger) {
+      const rpcFrom = rpcOldest != null ? Math.max(tailFrom, rpcOldest) : tailFrom;
+      if (rpcFrom > endLedger) {
+        return options.indexerEvents;
+      }
       const rpcTail = await fetchAllContractEvents(
         rpcClient,
         poolContractEventFilter(poolId),
-        { scanFrom: tailFrom, endLedger },
+        { scanFrom: rpcFrom, endLedger },
         PAGE_LIMIT
       );
       return mergeContractEvents(options.indexerEvents, rpcTail);
@@ -401,12 +407,17 @@ async function loadRouteEvents(
     return options.indexerEvents;
   }
 
+  const rpcFrom = rpcOldest != null ? Math.max(scanFrom, rpcOldest) : scanFrom;
+  if (rpcFrom > endLedger) {
+    return options.archivedEvents ?? [];
+  }
+
   return mergeContractEvents(
     options.archivedEvents ?? [],
     await fetchAllContractEvents(
       rpcClient,
       poolContractEventFilter(poolId),
-      { scanFrom, endLedger },
+      { scanFrom: rpcFrom, endLedger },
       PAGE_LIMIT
     )
   );

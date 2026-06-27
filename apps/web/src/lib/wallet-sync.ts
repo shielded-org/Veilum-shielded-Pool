@@ -9,7 +9,7 @@ import { resolveNoteSpendStatus, scanRouteEvents } from "./scan";
 import { scanDebug, scanDebugWarn, scanRpcLabel } from "./scan-debug";
 import { fetchMerkleLeaves } from "./shield-ops";
 import { createRpc } from "./soroban";
-import { pickEventsRpc, probeLedgerWindow, type RpcLedgerWindow } from "./rpc-events";
+import { pickEventsRpc, resolveScanLedgerRange, type RpcLedgerWindow } from "./rpc-events";
 import { useShieldedStore } from "../store/use-shielded-store";
 import type { DecryptedNote, Hex32, NetworkName } from "./types";
 import { bytes32Arg } from "./utils";
@@ -70,65 +70,54 @@ export async function refreshShieldedWallet(params: {
   let indexerChannelFiltered = false;
   let archivedIndexerEvents: Awaited<ReturnType<typeof tryFetchIndexerRouteEvents>>["events"] = [];
 
-  const [indexerStatus, latestLedger] = await Promise.all([
-    fetchIndexerPoolStatus(poolId),
-    rpc.getLatestLedger().catch(() => null),
-  ]);
+  const indexerStatus = await fetchIndexerPoolStatus(poolId);
 
-  const chainLatest = latestLedger?.sequence ?? indexerStatus?.lastIndexedLedger ?? null;
-  if (chainLatest != null) {
-    ledgerWindow = {
-      oldest: indexerStatus?.oldestStoredLedger ?? deployLedger ?? 1,
-      latest: chainLatest,
-      rpcUrl: config.rpcUrl,
-    };
-    eventsRpc = rpc;
-    poolDeployLedger = poolDeployLedger ?? indexerStatus?.deployLedger ?? ledgerWindow.oldest;
-  } else {
-    try {
-      const fallback = await pickEventsRpc(config, poolId, deployLedger, { force: false });
-      ledgerWindow = fallback.window;
-      eventsRpc = fallback.rpc;
-      poolDeployLedger = poolDeployLedger ?? deployLedger ?? fallback.window.oldest;
-    } catch (e) {
-      warnings.push(`Could not resolve scan start ledger: ${errMsg(e)}`);
-    }
+  try {
+    const eventsHandle = await pickEventsRpc(config, poolId, deployLedger, { force: false });
+    ledgerWindow = eventsHandle.window;
+    eventsRpc = eventsHandle.rpc;
+    poolDeployLedger =
+      poolDeployLedger ?? indexerStatus?.deployLedger ?? deployLedger ?? ledgerWindow.oldest;
+  } catch (e) {
+    warnings.push(`Could not resolve RPC event window: ${errMsg(e)}`);
   }
 
-  let scanFromLedger = poolDeployLedger ?? ledgerWindow?.oldest ?? 1;
+  const scanFromLedger =
+    poolDeployLedger ??
+    indexerStatus?.oldestStoredLedger ??
+    deployLedger ??
+    ledgerWindow?.oldest ??
+    1;
   let lastScannedLedger = scanFromLedger - 1;
 
   if (ledgerWindow && indexerStatus?.lastIndexedLedger != null) {
-    const indexerEnd = Math.min(indexerStatus.lastIndexedLedger, ledgerWindow.latest);
-    if (scanFromLedger <= indexerEnd) {
+    const indexerTo = Math.min(indexerStatus.lastIndexedLedger, ledgerWindow.latest);
+    if (scanFromLedger <= indexerTo) {
       const fetched = await tryFetchIndexerRouteEvents(
         poolId,
         scanFromLedger,
-        indexerEnd,
+        indexerTo,
         viewingChannelHex
       );
       if (fetched.reachable) {
         indexerEvents = fetched.events;
         archivedIndexerEvents = fetched.events;
         if (indexerStatus.lastIndexedLedger < ledgerWindow.latest) {
-          indexerTailFrom = indexerStatus.lastIndexedLedger + 1;
+          const tailFrom = Math.max(ledgerWindow.oldest, indexerStatus.lastIndexedLedger + 1);
+          if (tailFrom <= ledgerWindow.latest) {
+            indexerTailFrom = tailFrom;
+          }
         }
         indexerChannelFiltered = fetched.channelFiltered && indexerTailFrom === undefined;
         scanDebug("refresh:indexerChannel", {
           from: scanFromLedger,
-          to: indexerEnd,
+          to: indexerTo,
           count: fetched.events.length,
           tailFrom: indexerTailFrom ?? null,
+          rpcOldest: ledgerWindow.oldest,
           lastIndexedLedger: indexerStatus.lastIndexedLedger,
         });
       }
-    }
-  } else if (ledgerWindow) {
-    try {
-      const window = await probeLedgerWindow(ledgerWindow.rpcUrl, poolId, { force: false });
-      ledgerWindow = window;
-    } catch {
-      /* use approximate window */
     }
   }
 
@@ -158,15 +147,10 @@ export async function refreshShieldedWallet(params: {
       scanSkipped = true;
       warnings.push("Note scan skipped: RPC event window unavailable");
     } else {
-      if (indexerEvents === undefined) {
-        const fresh = await pickEventsRpc(config, poolId, deployLedger, { force: false });
-        ledgerWindow = fresh.window;
-        eventsRpc = fresh.rpc;
-      }
-      const endLedger = ledgerWindow.latest;
-      if (scanFromLedger > endLedger) {
+      const range = resolveScanLedgerRange(scanFromLedger, ledgerWindow);
+      if (range.scanFrom > range.endLedger && indexerEvents === undefined) {
         scanSkipped = true;
-        lastScannedLedger = endLedger;
+        lastScannedLedger = range.endLedger;
       } else {
         const delta = await scanRouteEvents(eventsRpc, poolId, scanFromLedger, viewingPriv, params.viewingPub, {
           indexedRouteEvents,
