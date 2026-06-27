@@ -6,6 +6,8 @@ import {
 import albedoImport from "@albedo-link/intent";
 
 import { applyLocalWalletIcons } from "./wallet-icons";
+import { VEILUM_WALLET_KIT_THEME_DARK, walletKitThemeFor } from "./wallet-kit-theme";
+import type { ColorTheme } from "../store/theme-atoms";
 import {
   ALBEDO_ID,
   createWalletModules,
@@ -49,11 +51,22 @@ export function initWalletKit(network: NetworkName = "testnet"): void {
     StellarWalletsKit.init({
       network: kitNetwork,
       modules: applyLocalWalletIcons(createWalletModules()),
+      theme: VEILUM_WALLET_KIT_THEME_DARK,
+      authModal: {
+        showInstallLabel: true,
+        hideUnsupportedWallets: true,
+      },
     });
     initialized = true;
     return;
   }
   StellarWalletsKit.setNetwork(kitNetwork);
+  StellarWalletsKit.setTheme(VEILUM_WALLET_KIT_THEME_DARK);
+}
+
+export function applyWalletKitTheme(theme: ColorTheme): void {
+  if (!initialized) return;
+  StellarWalletsKit.setTheme(walletKitThemeFor(theme));
 }
 
 export async function connectWallet(): Promise<string> {
