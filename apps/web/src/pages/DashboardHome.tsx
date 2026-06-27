@@ -33,7 +33,7 @@ function sortNewestFirst<T extends { createdAt?: string }>(items: T[]): T[] {
 }
 
 export function DashboardHome() {
-  const { wallet, busy, error, connect } = useWalletConnection();
+  const { wallet, busy, error, connectWallet, openKeySign, hasShieldKeys } = useWalletConnection();
   const reveal = useShieldedStore((s) => s.revealBalances);
   const setReveal = useShieldedStore((s) => s.setRevealBalances);
   const relayerOk = useShieldedStore((s) => s.relayerOk);
@@ -48,7 +48,7 @@ export function DashboardHome() {
   const [showNoteDetails, setShowNoteDetails] = useState(true);
 
   const unspent = notes.filter((n) => !n.spent);
-  const hasKeys = useShieldedStore((s) => !!(s.viewingKey && s.spendingKey && s.viewingPub));
+  const hasKeys = hasShieldKeys;
   const ready = !!(wallet && hasKeys);
 
   const balanceAssets = registry ? summarizeUnspentBySymbol(notes, registry) : [];
@@ -72,7 +72,24 @@ export function DashboardHome() {
   }
 
   if (!wallet) {
-    return <DashboardConnectScreen busy={busy} error={error} onConnect={() => void connect()} />;
+    return (
+      <DashboardConnectScreen
+        busy={busy}
+        error={error}
+        onConnect={() => void connectWallet()}
+      />
+    );
+  }
+
+  if (!hasKeys) {
+    return (
+      <DashboardConnectScreen
+        mode="sign"
+        busy={busy}
+        error={error}
+        onConnect={openKeySign}
+      />
+    );
   }
 
   return (
