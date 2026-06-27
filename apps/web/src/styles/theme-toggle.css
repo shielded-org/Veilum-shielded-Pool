@@ -1,0 +1,111 @@
+/* Theme toggle + light-mode component polish */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.theme-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-toggle--labeled {
+  width: auto;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.theme-toggle--labeled.w-full {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Landing nav scrolled shadow */
+.landing-page .lp-nav-scrolled {
+  box-shadow: 0 12px 32px var(--nav-shadow);
+}
+
+.landing-page .lp-mobile-overlay {
+  background: var(--overlay);
+}
+
+.landing-page .lp-hero-shadow {
+  box-shadow: 0 24px 48px var(--hero-shadow);
+}
+
+/* Wallet kit overrides follow document theme */
+.stellar-wallets-kit:has(> section) {
+  background: var(--overlay) !important;
+}
+
+.stellar-wallets-kit > section {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border)) !important;
+  box-shadow:
+    0 24px 48px -12px var(--nav-shadow),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent) !important;
+}
+
+.stellar-wallets-kit button[type="button"]:hover {
+  background: var(--accent-soft) !important;
+}
+
+/* Onboarding / key dialog */
+.onboarding-overlay {
+  background: var(--overlay);
+}
+
+.onboarding-dialog {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)) 0%,
+    var(--bg-elevated) 45%,
+    var(--bg-terminal) 100%
+  );
+  box-shadow:
+    0 24px 48px -12px var(--nav-shadow),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.onboarding-dialog__mark {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: var(--accent-soft);
+}
+
+/* Toast shadow in light mode */
+[data-theme="light"] {
+  --toastify-toast-shadow: 0 12px 32px oklch(20% 0.02 75 / 0.12);
+}
+
+/* Logo chips on landing carousel */
+[data-theme="light"] .lp-logo-chip {
+  background: oklch(100% 0 0);
+  border: 1px solid var(--border);
+}
+
+[data-theme="dark"] .lp-logo-chip {
+  background: oklch(100% 0 0 / 0.95);
+}
