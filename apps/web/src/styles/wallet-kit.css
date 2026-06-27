@@ -1,0 +1,39 @@
+/* Stellar Wallets Kit — Veilum brand overrides (follows document theme) */
+
+.stellar-wallets-kit {
+  --veilum-accent: var(--accent);
+  --veilum-accent-soft: var(--accent-soft);
+  --veilum-border: var(--border);
+  --veilum-bg: var(--bg);
+  --veilum-elevated: var(--bg-elevated);
+}
+
+.stellar-wallets-kit:has(> section) {
+  backdrop-filter: blur(8px);
+}
+
+.stellar-wallets-kit > section {
+  width: min(24rem, calc(100vw - 32px)) !important;
+  max-width: 24rem !important;
+  border-radius: 1rem !important;
+  overflow: hidden;
+}
+
+.stellar-wallets-kit img {
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.stellar-wallets-kit button[type="button"] {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.stellar-wallets-kit a,
+.stellar-wallets-kit [class*="install"] {
+  border-radius: 999px !important;
+}
+
+.stellar-wallets-kit footer,
+.stellar-wallets-kit [class*="footer"] {
+  opacity: 0.72;
+}
