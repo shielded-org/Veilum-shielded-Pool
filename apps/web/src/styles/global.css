@@ -10,7 +10,10 @@ html {
   box-sizing: border-box;
 }
 
-:root {
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
   /* Core surfaces (OKLCH) */
   --bg: oklch(8% 0.012 75);
   --bg-elevated: oklch(13% 0.014 75);
@@ -27,6 +30,7 @@ html {
   --accent: oklch(78% 0.14 175);
   --accent-hover: oklch(72% 0.14 175);
   --accent-soft: oklch(78% 0.14 175 / 0.12);
+  --accent-foreground: oklch(8% 0.012 75);
 
   /* Privacy signals */
   --signal-public: oklch(74% 0.11 65);
@@ -41,6 +45,43 @@ html {
   --error-soft: oklch(62% 0.18 25 / 0.12);
   --warning: oklch(78% 0.12 85);
   --warning-soft: oklch(78% 0.12 85 / 0.12);
+
+  /* Chrome */
+  --overlay: oklch(5% 0.01 75 / 0.72);
+  --nav-shadow: oklch(0% 0 0 / 0.35);
+  --hero-shadow: oklch(0% 0 0 / 0.4);
+  --grid-line: oklch(24% 0.015 75 / 0.35);
+  --spotlight: oklch(78% 0.14 175 / 0.18);
+
+  /* Dashboard sidebar */
+  --sidebar-bg: oklch(10% 0.014 75 / 0.92);
+  --sidebar-fg: oklch(96% 0.01 90 / 0.86);
+  --sidebar-fg-muted: oklch(96% 0.01 90 / 0.62);
+  --sidebar-fg-subtle: oklch(96% 0.01 90 / 0.34);
+  --sidebar-border: oklch(96% 0.01 90 / 0.08);
+  --sidebar-nav-hover-bg: oklch(96% 0.01 90 / 0.07);
+  --sidebar-nav-hover-fg: oklch(96% 0.01 90);
+  --sidebar-nav-active-bg: oklch(78% 0.14 175 / 0.14);
+  --sidebar-nav-active-fg: oklch(78% 0.14 175);
+  --sidebar-nav-active-icon: oklch(78% 0.14 175);
+  --sidebar-brand-mark-bg: oklch(78% 0.14 175 / 0.15);
+  --sidebar-brand-mark-fg: oklch(78% 0.14 175);
+  --sidebar-footer-fg: oklch(96% 0.01 90 / 0.48);
+  --sidebar-footer-hover-bg: oklch(96% 0.01 90 / 0.06);
+  --sidebar-footer-hover-fg: oklch(96% 0.01 90 / 0.9);
+
+  --table-row-hover: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+
+  /* Tailwind veilum tokens */
+  --veilum-bg: var(--bg);
+  --veilum-elevated: var(--bg-elevated);
+  --veilum-terminal: var(--bg-terminal);
+  --veilum-text: var(--text);
+  --veilum-accent: var(--accent);
+  --veilum-accent-soft: var(--accent-soft);
+  --veilum-border: var(--border);
+  --veilum-muted: var(--text-muted);
+  --veilum-subtle: var(--text-subtle);
 
   /* Legacy aliases (compat with pages.css) */
   --ink: var(--text);
@@ -84,6 +125,64 @@ html {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: oklch(98% 0.008 90);
+  --bg-elevated: oklch(100% 0.004 90);
+  --bg-terminal: oklch(97% 0.007 90);
+  --border: oklch(90% 0.012 90);
+  --border-subtle: oklch(94% 0.01 90);
+
+  --text: oklch(16% 0.02 75);
+  --text-muted: oklch(40% 0.02 75);
+  --text-subtle: oklch(52% 0.02 75);
+
+  --accent: oklch(55% 0.15 175);
+  --accent-hover: oklch(48% 0.15 175);
+  --accent-soft: oklch(55% 0.15 175 / 0.1);
+  --accent-foreground: oklch(99% 0.006 90);
+
+  /* Public = neutral label in light mode; no amber wash on surfaces */
+  --signal-public: oklch(46% 0.04 75);
+  --signal-public-soft: oklch(97% 0.007 90);
+  --signal-private: oklch(55% 0.15 175);
+  --signal-private-soft: oklch(55% 0.15 175 / 0.08);
+
+  --success: oklch(44% 0.14 155);
+  --success-soft: oklch(44% 0.14 155 / 0.08);
+  --error: oklch(48% 0.16 25);
+  --error-soft: oklch(48% 0.16 25 / 0.08);
+  --warning: oklch(48% 0.1 75);
+  --warning-soft: oklch(97% 0.007 90);
+
+  --shadow-card: 0 1px 2px oklch(22% 0.02 75 / 0.04), 0 6px 20px oklch(22% 0.02 75 / 0.04);
+
+  --overlay: oklch(30% 0.02 75 / 0.32);
+  --nav-shadow: oklch(20% 0.02 75 / 0.1);
+  --hero-shadow: oklch(20% 0.02 75 / 0.14);
+  --grid-line: oklch(80% 0.012 75 / 0.55);
+  --spotlight: oklch(48% 0.14 175 / 0.12);
+
+  --sidebar-bg: oklch(97% 0.008 90);
+  --sidebar-fg: oklch(24% 0.02 75);
+  --sidebar-fg-muted: oklch(42% 0.02 75);
+  --sidebar-fg-subtle: oklch(55% 0.02 75);
+  --sidebar-border: oklch(90% 0.012 75);
+  --sidebar-nav-hover-bg: oklch(94% 0.01 90);
+  --sidebar-nav-hover-fg: oklch(18% 0.02 75);
+  --sidebar-nav-active-bg: oklch(48% 0.14 175 / 0.12);
+  --sidebar-nav-active-fg: oklch(38% 0.14 175);
+  --sidebar-nav-active-icon: oklch(42% 0.14 175);
+  --sidebar-brand-mark-bg: oklch(48% 0.14 175 / 0.12);
+  --sidebar-brand-mark-fg: oklch(42% 0.14 175);
+  --sidebar-footer-fg: oklch(48% 0.02 75);
+  --sidebar-footer-hover-bg: oklch(94% 0.01 90);
+  --sidebar-footer-hover-fg: oklch(22% 0.02 75);
+
+  --table-row-hover: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
 }
 
 body {
@@ -187,7 +286,7 @@ code,
 
 .btn-primary {
   background: var(--accent);
-  color: oklch(12% 0.02 175);
+  color: var(--accent-foreground);
   border-color: var(--accent);
 }
 
@@ -367,7 +466,7 @@ textarea:focus {
 }
 
 .table tbody tr:hover {
-  background: oklch(15% 0.014 75);
+  background: var(--table-row-hover);
 }
 
 /* Badges */
@@ -464,12 +563,12 @@ textarea:focus {
 
 .privacy-callout--public {
   background: var(--signal-public-soft);
-  border-color: oklch(74% 0.11 65 / 0.3);
+  border-color: color-mix(in srgb, var(--signal-public) 28%, var(--border));
 }
 
 .privacy-callout--private {
   background: var(--signal-private-soft);
-  border-color: oklch(78% 0.14 175 / 0.3);
+  border-color: color-mix(in srgb, var(--signal-private) 28%, var(--border));
 }
 
 .privacy-callout__pill {
@@ -486,12 +585,12 @@ textarea:focus {
 
 .privacy-callout__pill--public {
   color: var(--signal-public);
-  border: 1px solid oklch(74% 0.11 65 / 0.35);
+  border: 1px solid color-mix(in srgb, var(--signal-public) 30%, var(--border));
 }
 
 .privacy-callout__pill--private {
   color: var(--signal-private);
-  border: 1px solid oklch(78% 0.14 175 / 0.35);
+  border: 1px solid color-mix(in srgb, var(--signal-private) 30%, var(--border));
 }
 
 .privacy-callout__detail {
