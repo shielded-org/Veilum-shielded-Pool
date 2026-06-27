@@ -17,7 +17,7 @@ import type { DecryptedNote, Hex32, NetworkConfig } from "./types";
 import { bytes32Arg, parseHex32 } from "./utils";
 
 const PAGE_LIMIT = 500;
-const DECRYPT_BATCH = 64;
+const DECRYPT_BATCH = 128;
 
 type RouteEvent = {
   txHash: string;
@@ -52,6 +52,12 @@ export type ScanRouteOptions = {
   knownNoteCount?: number;
   /** Pool events below the RPC retention window (from indexer). */
   archivedEvents?: Api.EventResponse[];
+  /** Pre-fetched indexer events — primary source when set (RPC only fills tail if needed). */
+  indexerEvents?: Api.EventResponse[];
+  /** First ledger to fetch from RPC when indexer lags behind chain head. */
+  indexerTailFrom?: number;
+  /** Indexer returned only this viewing channel's route events — skip topic filtering. */
+  indexerChannelFiltered?: boolean;
   onProgress?: (p: ScanProgress) => void;
 };
 
@@ -87,15 +93,24 @@ export async function scanRouteEvents(
 
   const runScan = () =>
     options.indexedRouteEvents
-      ? scanIndexedRouteEvents(
-          rpcClient,
-          poolId,
-          range.scanFrom,
-          range.endLedger,
-          viewingPriv,
-          viewingPub,
-          options
-        )
+      ? options.indexerChannelFiltered
+        ? scanIndexerChannelRouteEvents(
+            rpcClient,
+            poolId,
+            range.scanFrom,
+            range.endLedger,
+            viewingPriv,
+            options
+          )
+        : scanIndexedRouteEvents(
+            rpcClient,
+            poolId,
+            range.scanFrom,
+            range.endLedger,
+            viewingPriv,
+            viewingPub,
+            options
+          )
       : scanLegacyRouteEvents(
           rpcClient,
           poolId,
@@ -118,6 +133,56 @@ export async function scanRouteEvents(
     options.ledgerWindow = window;
     return await runScan();
   }
+}
+
+/**
+ * Fast path: indexer already filtered route events for this viewing channel.
+ * Skips topic parsing and decrypts all matched events in parallel batches.
+ */
+async function scanIndexerChannelRouteEvents(
+  rpcClient: SorobanRpc,
+  poolId: string,
+  scanFrom: number,
+  endLedger: number,
+  viewingPriv: bigint,
+  options: ScanRouteOptions
+): Promise<ScanRouteResult> {
+  const events = await loadRouteEvents(rpcClient, poolId, scanFrom, endLedger, options);
+  let lastScannedLedger = Math.max(scanFrom - 1, 0);
+
+  const batch: RouteEvent[] = [];
+  for (const ev of events) {
+    lastScannedLedger = Math.max(lastScannedLedger, ev.ledger);
+    const encrypted = encryptedNoteFromValue(ev.value);
+    if (!encrypted) continue;
+    batch.push({ txHash: ev.txHash, encryptedNoteHex: encrypted, ledger: ev.ledger });
+  }
+
+  const notes = await decryptRouteBatch(batch, viewingPriv, options.tokenFieldFilter);
+  if (events.length === 0) lastScannedLedger = endLedger;
+
+  scanDebug("scanIndexerChannelRouteEvents:done", {
+    poolId,
+    scanFrom,
+    endLedger,
+    channelEvents: events.length,
+    notesFound: notes.length,
+    lastScannedLedger,
+  });
+
+  options.onProgress?.({
+    pages: 1,
+    eventsScanned: events.length,
+    channelMatched: batch.length,
+    notesFound: notes.length,
+  });
+
+  return {
+    notes: dedupeNotes(notes),
+    lastScannedLedger,
+    eventsScanned: events.length,
+    channelMatched: batch.length,
+  };
 }
 
 /**
@@ -154,15 +219,7 @@ async function scanIndexedRouteEvents(
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  const events = mergeContractEvents(
-    options.archivedEvents ?? [],
-    await fetchAllContractEvents(
-      rpcClient,
-      poolContractEventFilter(poolId),
-      { scanFrom, endLedger },
-      PAGE_LIMIT
-    )
-  );
+  const events = await loadRouteEvents(rpcClient, poolId, scanFrom, endLedger, options);
 
   for (let i = 0; i < events.length; i += PAGE_LIMIT) {
     const chunk = events.slice(i, i + PAGE_LIMIT);
@@ -223,15 +280,7 @@ async function scanLegacyRouteEvents(
   let channelMatched = 0;
   let lastScannedLedger = Math.max(scanFrom - 1, 0);
 
-  const events = mergeContractEvents(
-    options.archivedEvents ?? [],
-    await fetchAllContractEvents(
-      rpcClient,
-      poolContractEventFilter(poolId),
-      { scanFrom, endLedger },
-      PAGE_LIMIT
-    )
-  );
+  const events = await loadRouteEvents(rpcClient, poolId, scanFrom, endLedger, options);
 
   for (let i = 0; i < events.length; i += PAGE_LIMIT) {
     const chunk = events.slice(i, i + PAGE_LIMIT);
@@ -329,6 +378,38 @@ function dedupeNotes(notes: DecryptedNote[]): DecryptedNote[] {
   const dedup = new Map<string, DecryptedNote>();
   for (const n of notes) dedup.set(n.id, n);
   return Array.from(dedup.values());
+}
+
+async function loadRouteEvents(
+  rpcClient: SorobanRpc,
+  poolId: string,
+  scanFrom: number,
+  endLedger: number,
+  options: ScanRouteOptions
+): Promise<Api.EventResponse[]> {
+  if (options.indexerEvents !== undefined) {
+    const tailFrom = options.indexerTailFrom;
+    if (tailFrom != null && tailFrom <= endLedger) {
+      const rpcTail = await fetchAllContractEvents(
+        rpcClient,
+        poolContractEventFilter(poolId),
+        { scanFrom: tailFrom, endLedger },
+        PAGE_LIMIT
+      );
+      return mergeContractEvents(options.indexerEvents, rpcTail);
+    }
+    return options.indexerEvents;
+  }
+
+  return mergeContractEvents(
+    options.archivedEvents ?? [],
+    await fetchAllContractEvents(
+      rpcClient,
+      poolContractEventFilter(poolId),
+      { scanFrom, endLedger },
+      PAGE_LIMIT
+    )
+  );
 }
 
 function contractEventKey(ev: Api.EventResponse): string {
