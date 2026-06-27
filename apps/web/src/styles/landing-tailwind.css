@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .landing-page,
+  .dashboard-shell {
+    --landing-accent: var(--accent);
+    --landing-accent-soft: var(--accent-soft);
+    --landing-border: var(--border);
+    --landing-text: var(--text);
+    --landing-muted: var(--text-muted);
+  }
+}
+
+@layer components {
+  .landing-page .lp-btn-primary,
+  .dashboard-shell .lp-btn-primary {
+    @apply inline-flex items-center justify-center rounded-full px-6 py-2.5 text-sm font-medium transition;
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  .landing-page .lp-btn-primary:hover,
+  .dashboard-shell .lp-btn-primary:hover {
+    filter: brightness(1.06);
+  }
+
+  .landing-page .lp-btn-secondary,
+  .dashboard-shell .lp-btn-secondary {
+    @apply inline-flex items-center justify-center rounded-full px-6 py-2.5 text-sm font-medium transition;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+    color: var(--text);
+  }
+
+  .landing-page .lp-btn-secondary:hover,
+  .dashboard-shell .lp-btn-secondary:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    background: var(--bg-elevated);
+  }
+
+  .landing-page .lp-section-label,
+  .dashboard-shell .db-section-label {
+    @apply mb-3 inline-flex items-center rounded-full px-3 py-1 font-mono text-[11px] uppercase tracking-wider;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-elevated) 65%, transparent);
+    color: var(--text-subtle);
+  }
+
+  .landing-page .lp-card,
+  .dashboard-shell .db-surface {
+    @apply rounded-2xl backdrop-blur-sm;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  }
+}
