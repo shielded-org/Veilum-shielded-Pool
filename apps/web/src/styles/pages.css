@@ -898,8 +898,8 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  background: #14161d;
-  color: rgba(255, 255, 255, 0.86);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-fg);
   padding: 20px 14px;
   display: flex;
   flex-direction: column;
@@ -908,7 +908,7 @@
   overflow-y: auto;
   z-index: var(--z-sticky);
   width: 240px;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .dashboard-sidebar__brand-text,
@@ -922,7 +922,7 @@
   align-items: center;
   gap: 12px;
   padding: 4px 8px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--sidebar-border);
   margin-bottom: 12px;
   color: inherit;
   text-decoration: none;
@@ -939,8 +939,8 @@
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: rgba(91, 82, 201, 0.28);
-  color: #c8c4f0;
+  background: var(--sidebar-brand-mark-bg);
+  color: var(--sidebar-brand-mark-fg);
   flex-shrink: 0;
 }
 
@@ -963,7 +963,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.34);
+  color: var(--sidebar-fg-subtle);
 }
 
 .dashboard-nav {
@@ -978,7 +978,7 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--sidebar-fg-muted);
   font-weight: 500;
   font-size: 14px;
   white-space: nowrap;
@@ -995,8 +995,8 @@
 }
 
 .dashboard-nav a:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #fff;
+  background: var(--sidebar-nav-hover-bg);
+  color: var(--sidebar-nav-hover-fg);
 }
 
 .dashboard-nav a:hover svg {
@@ -1004,20 +1004,20 @@
 }
 
 .dashboard-nav a.active {
-  background: rgba(91, 82, 201, 0.32);
-  color: #fff;
+  background: var(--sidebar-nav-active-bg);
+  color: var(--sidebar-nav-active-fg);
   font-weight: 600;
 }
 
 .dashboard-nav a.active svg {
   opacity: 1;
-  color: #c8c4f0;
+  color: var(--sidebar-nav-active-icon);
 }
 
 .dashboard-sidebar__footer {
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--sidebar-border);
 }
 
 .dashboard-sidebar__footer a {
@@ -1026,7 +1026,7 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--sidebar-footer-fg);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -1034,8 +1034,8 @@
 }
 
 .dashboard-sidebar__footer a:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--sidebar-footer-hover-fg);
+  background: var(--sidebar-footer-hover-bg);
 }
 
 .dashboard-sidebar__footer .nav-label {
@@ -1260,7 +1260,7 @@
   background: color-mix(in srgb, var(--frost) 92%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(13, 15, 20, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .dashboard-topbar__left {
@@ -2183,14 +2183,14 @@
 
 .alert-banner--warn {
   background: var(--warning-soft);
-  color: #8a6b1a;
-  border: 1px solid rgba(201, 149, 46, 0.25);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
 }
 
 .alert-banner--error {
   background: var(--error-soft);
   color: var(--error);
-  border: 1px solid rgba(214, 69, 69, 0.2);
+  border: 1px solid color-mix(in srgb, var(--error) 28%, var(--border));
 }
 
 /* Key reveal confirmation */
@@ -2498,15 +2498,7 @@
   }
 }
 
-/* Stellar Wallets Kit modal — preserve compact panel width (kit default is 22rem) */
-.stellar-wallets-kit > section {
-  width: min(22rem, calc(100vw - 32px)) !important;
-  max-width: 22rem !important;
-}
-
-.stellar-wallets-kit img {
-  object-fit: contain;
-}
+/* Stellar Wallets Kit — see wallet-kit.css for Veilum theme overrides */
 
 @media (prefers-reduced-motion: reduce) {
   .landing-card--back-2,
