@@ -6,7 +6,7 @@ import {
 import albedoImport from "@albedo-link/intent";
 
 import { applyLocalWalletIcons } from "./wallet-icons";
-import { VEILUM_WALLET_KIT_THEME_DARK, walletKitThemeFor } from "./wallet-kit-theme";
+import { walletKitThemeFor } from "./wallet-kit-theme";
 import type { ColorTheme } from "../store/theme-atoms";
 import {
   ALBEDO_ID,
@@ -44,14 +44,19 @@ export function passphraseToKitNetwork(passphrase: string): Networks {
   return Networks.TESTNET;
 }
 
+export function readDocumentTheme(): ColorTheme {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
 /** Initialize kit once; safe to call repeatedly when the app network changes. */
-export function initWalletKit(network: NetworkName = "testnet"): void {
+export function initWalletKit(network: NetworkName = "testnet", theme?: ColorTheme): void {
   const kitNetwork = networkNameToKitNetwork(network);
+  const kitTheme = walletKitThemeFor(theme ?? readDocumentTheme());
   if (!initialized) {
     StellarWalletsKit.init({
       network: kitNetwork,
       modules: applyLocalWalletIcons(createWalletModules()),
-      theme: VEILUM_WALLET_KIT_THEME_DARK,
+      theme: kitTheme,
       authModal: {
         showInstallLabel: true,
         hideUnsupportedWallets: true,
@@ -61,7 +66,7 @@ export function initWalletKit(network: NetworkName = "testnet"): void {
     return;
   }
   StellarWalletsKit.setNetwork(kitNetwork);
-  StellarWalletsKit.setTheme(VEILUM_WALLET_KIT_THEME_DARK);
+  StellarWalletsKit.setTheme(kitTheme);
 }
 
 export function applyWalletKitTheme(theme: ColorTheme): void {
@@ -70,6 +75,7 @@ export function applyWalletKitTheme(theme: ColorTheme): void {
 }
 
 export async function connectWallet(): Promise<string> {
+  applyWalletKitTheme(readDocumentTheme());
   const { address } = await StellarWalletsKit.authModal();
   if (!address || typeof address !== "string") throw new Error("No wallet address returned");
   return address;
