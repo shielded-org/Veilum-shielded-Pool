@@ -128,11 +128,13 @@ const server = http.createServer(async (req, res) => {
     const poolId = decodeURIComponent(eventsMatch[1]);
     const fromLedger = Number(url.searchParams.get("fromLedger") || 0);
     const toLedger = Number(url.searchParams.get("toLedger") || Number.MAX_SAFE_INTEGER);
-    const events = store.queryEvents(poolId, fromLedger, toLedger);
+    const channel = url.searchParams.get("channel") ?? undefined;
+    const events = store.queryEvents(poolId, fromLedger, toLedger, channel);
     sendJson(res, 200, {
       poolId,
       fromLedger,
       toLedger,
+      channel: channel ?? null,
       count: events.length,
       events,
     });
