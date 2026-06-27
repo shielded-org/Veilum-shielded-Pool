@@ -1,4 +1,4 @@
-/* Onboarding / key-unlock dialog */
+/* Onboarding / key-unlock dialog — follows document theme tokens */
 
 .onboarding-overlay {
   position: fixed;
@@ -7,7 +7,7 @@
   display: grid;
   place-items: center;
   padding: 16px;
-  background: oklch(5% 0.01 75 / 0.78);
+  background: var(--overlay);
   backdrop-filter: blur(10px);
 }
 
@@ -15,17 +15,21 @@
   width: min(26rem, 100%);
   padding: 1.5rem 1.5rem 1.25rem;
   border-radius: 1rem;
-  border: 1px solid oklch(78% 0.14 175 / 0.22);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: var(--bg-elevated);
+  box-shadow:
+    0 24px 48px -12px var(--nav-shadow),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  text-align: left;
+}
+
+[data-theme="dark"] .onboarding-dialog {
   background: linear-gradient(
     165deg,
-    oklch(14% 0.02 175 / 0.35) 0%,
-    oklch(13% 0.014 75) 45%,
-    oklch(11% 0.02 200) 100%
+    color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)) 0%,
+    var(--bg-elevated) 45%,
+    var(--bg-terminal) 100%
   );
-  box-shadow:
-    0 24px 48px -12px oklch(0% 0 0 / 0.55),
-    0 0 0 1px oklch(78% 0.14 175 / 0.08);
-  text-align: left;
 }
 
 .onboarding-dialog__head {
@@ -43,8 +47,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 0.75rem;
-  border: 1px solid oklch(78% 0.14 175 / 0.28);
-  background: oklch(78% 0.14 175 / 0.1);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -127,7 +131,7 @@
   padding: 0.75rem 0.85rem;
   border-radius: 0.65rem;
   border: 1px solid var(--border-subtle);
-  background: oklch(8% 0.012 75 / 0.55);
+  background: var(--accent-soft);
 }
 
 .onboarding-trust__item {
@@ -146,7 +150,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
   color: var(--accent);
   font-size: 0.65rem;
   font-weight: 700;
@@ -156,14 +160,14 @@
   margin-bottom: 1rem;
   border-radius: 0.55rem;
   border: 1px solid var(--border-subtle);
-  background: oklch(8% 0.012 75 / 0.4);
+  background: var(--bg-terminal);
 }
 
 .onboarding-details summary {
   cursor: pointer;
   padding: 0.6rem 0.75rem;
   font-size: 0.78rem;
-  color: var(--text-subtle);
+  color: var(--text-muted);
   list-style: none;
 }
 
@@ -174,7 +178,7 @@
 .onboarding-details summary::after {
   content: "+";
   float: right;
-  color: var(--text-muted);
+  color: var(--text-subtle);
 }
 
 .onboarding-details[open] summary::after {
@@ -186,7 +190,7 @@
   padding: 0 0.75rem 0.75rem;
   font-size: 0.78rem;
   line-height: 1.55;
-  color: var(--text-subtle);
+  color: var(--text-muted);
 }
 
 .onboarding-dialog__error {
