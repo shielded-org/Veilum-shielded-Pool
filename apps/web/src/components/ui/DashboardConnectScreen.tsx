@@ -5,10 +5,18 @@ type DashboardConnectScreenProps = {
   busy: boolean;
   onConnect: () => void;
   error?: string | null;
+  mode?: "connect" | "sign";
 };
 
-export function DashboardConnectScreen({ busy, onConnect, error }: DashboardConnectScreenProps) {
+export function DashboardConnectScreen({
+  busy,
+  onConnect,
+  error,
+  mode = "connect",
+}: DashboardConnectScreenProps) {
   const mobile = isMobileWalletDevice();
+  const signing = mode === "sign";
+
   return (
     <div className="dashboard-connect-screen">
       <div className="dashboard-connect-screen__card">
@@ -34,12 +42,15 @@ export function DashboardConnectScreen({ busy, onConnect, error }: DashboardConn
             />
           </svg>
         </span>
-        <h2 className="dashboard-connect-screen__title">Connect your wallet</h2>
+        <h2 className="dashboard-connect-screen__title">
+          {signing ? "Almost there — unlock your balance" : "Connect your wallet"}
+        </h2>
         <p className="dashboard-connect-screen__body">
-          Sign in with Freighter, xBull, Albedo, or Lobstr to derive shield keys, view your private
-          balance, and use the pool.
+          {signing
+            ? "Approve the quick message in your wallet to finish setup. It is not a payment — just the keys Veilum needs on your device."
+            : "Choose Freighter, Albedo, xBull, or Lobstr to get started with private stablecoin payments."}
         </p>
-        {mobile ? (
+        {mobile && !signing ? (
           <p className="dashboard-connect-screen__hint">
             On mobile, open this site in the <strong>xBull</strong> or <strong>Albedo</strong> in-app
             browser for reliable transaction signing.
@@ -53,8 +64,10 @@ export function DashboardConnectScreen({ busy, onConnect, error }: DashboardConn
         >
           {busy ? (
             <>
-              <IconSpinner size={16} /> Connecting…
+              <IconSpinner size={16} /> {signing ? "Waiting for signature…" : "Connecting…"}
             </>
+          ) : signing ? (
+            "Continue in wallet"
           ) : (
             "Connect Wallet"
           )}
@@ -62,9 +75,11 @@ export function DashboardConnectScreen({ busy, onConnect, error }: DashboardConn
         {error ? (
           <p className="badge err dashboard-connect-screen__error">{error}</p>
         ) : null}
-        <p className="dashboard-connect-screen__hint">
-          You can also use the wallet button in the top right.
-        </p>
+        {!signing ? (
+          <p className="dashboard-connect-screen__hint">
+            You can also use the wallet button in the top right.
+          </p>
+        ) : null}
       </div>
     </div>
   );
