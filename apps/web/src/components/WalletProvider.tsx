@@ -18,7 +18,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initWalletKit(network);
-    const theme = (document.documentElement.dataset.theme as ColorTheme | undefined) ?? "dark";
+    const theme = (document.documentElement.dataset.theme as ColorTheme | undefined) ?? "light";
     applyWalletKitTheme(theme);
   }, [network]);
 

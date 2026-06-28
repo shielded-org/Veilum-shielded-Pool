@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,9 +12,8 @@
       (function () {
         try {
           var t = localStorage.getItem("veilum-color-theme");
-          if (t === "light" || t === "dark") {
-            document.documentElement.dataset.theme = t;
-          }
+          document.documentElement.dataset.theme =
+            t === "light" || t === "dark" ? t : "light";
         } catch (e) {}
       })();
     </script>
