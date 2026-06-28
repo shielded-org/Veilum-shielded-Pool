@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
-import { ProofLoader } from "../components/ProofLoader";
 import { AmountField } from "../components/ui/AmountField";
 import { AspStatusPanel } from "../components/ui/AspStatusPanel";
 import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
-import { StatusMessage } from "../components/ui/StatusMessage";
 import { TokenSelector } from "../components/ui/TokenSelector";
 import { useWallet } from "../hooks/use-wallet";
+import { useWalletTransactions } from "../hooks/use-wallet-transactions";
 import {
   ensureAspMembership,
   fetchAspStatus,
@@ -16,7 +14,7 @@ import {
 } from "../lib/asp";
 import { loadNetworkConfig } from "../lib/config";
 import { executeShieldDeposit } from "../lib/shield-ops";
-import { contractSuccess, finishNotify, notifyLoading } from "../lib/notify";
+import { runShieldJob } from "../lib/shielded-tx-runner";
 import { createRpc, getTokenBalance } from "../lib/soroban";
 import {
   defaultStableSymbol,
@@ -32,8 +30,6 @@ import type { Hex32 } from "../lib/types";
 
 export function ShieldPage() {
   const [amount, setAmount] = useState("100");
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<StableSymbol>("USDC");
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
@@ -41,10 +37,9 @@ export function ShieldPage() {
   const viewingKey = useShieldedStore((s) => s.viewingKey);
   const viewingPub = useShieldedStore((s) => s.viewingPub);
   const ownerPk = useShieldedStore((s) => s.ownerPk);
-  const bumpRouteCursor = useShieldedStore((s) => s.bumpRouteCursor);
-  const addNote = useShieldedStore((s) => s.addNote);
+  const routeCursor = useShieldedStore((s) => s.routeCursor);
   const addTransaction = useShieldedStore((s) => s.addTransaction);
-  const updateTransaction = useShieldedStore((s) => s.updateTransaction);
+  const transactions = useWalletTransactions();
   const [tokenList, setTokenList] = useState<ListedStable[]>([]);
   const [publicBalances, setPublicBalances] = useState<Partial<Record<StableSymbol, bigint>>>({});
   const [balancesLoading, setBalancesLoading] = useState(false);
@@ -52,6 +47,7 @@ export function ShieldPage() {
   const [aspStatus, setAspStatus] = useState<AspStatus | null>(null);
   const [aspEnforced, setAspEnforced] = useState(false);
   const [aspScanning, setAspScanning] = useState(false);
+  const shieldPending = transactions.some((t) => t.type === "shield" && t.status === "pending");
   const [lastScan, setLastScan] = useState<AspScanResult | null>(null);
   const [tokenContractId, setTokenContractId] = useState<string | null>(null);
 
@@ -141,73 +137,59 @@ export function ShieldPage() {
     });
   }, [selected, aspEnforced, wallet, network]);
 
-  async function onShield() {
+  function onShield() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
-    setBusy(true);
-    setStatus("Starting shield deposit…");
     const txId = crypto.randomUUID();
-    const loadingToast = notifyLoading("Shielding tokens…");
-    addTransaction({
+    const routeCursorAtSubmit = routeCursor;
+
+    addTransaction(wallet, {
       id: txId,
+      walletAddress: wallet,
       type: "shield",
       status: "pending",
       amount: `${amount} ${selected}`,
       createdAt: new Date().toISOString(),
+      progressStep: "prepare",
+      progressMessage: "Starting shield deposit…",
+      progressPercent: 8,
     });
-    try {
-      const config = await loadNetworkConfig(network);
-      const tokenId = resolveStableContract(config.contracts, selected);
-      const routeCursor = bumpRouteCursor();
-      updateTransaction(txId, { contractId: config.contracts.shieldedPool });
-      const result = await executeShieldDeposit({
-        config,
-        wallet,
-        keys: {
-          spendingKey: BigInt(spendingKey),
-          viewingPriv: BigInt(viewingKey),
-          viewingPub,
-          ownerPk: ownerPk as Hex32,
-        },
-        amount: parseTokenAmount(amount),
-        tokenContractId: tokenId,
-        routeCursor,
-        onStatus: setStatus,
-      });
-      addNote(result.note);
-      updateTransaction(txId, {
-        status: "confirmed",
-        txHash: result.txHash,
-        contractId: config.contracts.shieldedPool,
-      });
-      setAspStatus("approved");
-      setStatus("Refreshing balances…");
-      await syncShieldedWalletNow();
-      await refreshPublicBalances(wallet);
-      finishNotify(loadingToast, {
-        ok: true,
-        ...contractSuccess.shield(amount, selected),
-        txHash: result.txHash,
-      });
-      setAmount("");
-      setStatus("");
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      updateTransaction(txId, {
-        status: "failed",
-        detail: message,
-      });
-      finishNotify(loadingToast, { ok: false, message });
-      setStatus(message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  const statusVariant = status.toLowerCase().includes("error") || status.toLowerCase().includes("fail")
-    ? "error"
-    : status.includes("Shielded") || status.includes("Tx ")
-      ? "success"
-      : "info";
+    runShieldJob({
+      wallet,
+      txId,
+      amountLabel: `${amount} ${selected}`,
+      tokenSymbol: selected,
+      amount,
+      onAfterDeposit: async () => {
+        setAspStatus("approved");
+        await refreshPublicBalances(wallet);
+      },
+      run: async (onStatus) => {
+        const config = await loadNetworkConfig(network);
+        const tokenId = resolveStableContract(config.contracts, selected);
+        const result = await executeShieldDeposit({
+          config,
+          wallet,
+          keys: {
+            spendingKey: BigInt(spendingKey),
+            viewingPriv: BigInt(viewingKey),
+            viewingPub,
+            ownerPk: ownerPk as Hex32,
+          },
+          amount: parseTokenAmount(amount),
+          tokenContractId: tokenId,
+          routeCursor: routeCursorAtSubmit,
+          onStatus,
+        });
+        return {
+          txHash: result.txHash,
+          contractId: config.contracts.shieldedPool,
+        };
+      },
+    });
+
+    setAmount("");
+  }
 
   return (
     <>
@@ -221,7 +203,7 @@ export function ShieldPage() {
                 lastScan={lastScan}
                 wallet={wallet}
                 onRescan={() => void runAspScreen()}
-                rescanDisabled={busy || aspScanning}
+                rescanDisabled={aspScanning || shieldPending}
               />
             ) : null}
             <FormAsidePanel title="What happens when you shield">
@@ -246,6 +228,12 @@ export function ShieldPage() {
         }
       >
         <div className="card form-card">
+          {shieldPending ? (
+            <p className="form-notice">
+              A shield deposit is processing in the background. Track progress from Recent activity or the dock
+              at the bottom of the screen.
+            </p>
+          ) : null}
           <p className="form-notice">
             <span className="form-notice__label">Visible on-chain</span>
             Moves public stablecoins into your private balance. This transaction is signed by your
@@ -276,7 +264,7 @@ export function ShieldPage() {
             onChange={setAmount}
             symbol={selected}
             maxAmount={selectedBalance}
-            disabled={!wallet || balancesLoading}
+            disabled={!wallet || balancesLoading || shieldPending}
             hint={
               selectedBalance !== undefined && selectedBalance > 0n
                 ? `Up to ${formatStableUsd(selectedBalance)} available in your wallet`
@@ -287,7 +275,7 @@ export function ShieldPage() {
             <button
               className="btn btn-primary"
               disabled={
-                busy ||
+                shieldPending ||
                 aspScanning ||
                 aspStatus === "denied" ||
                 !wallet ||
@@ -299,10 +287,8 @@ export function ShieldPage() {
               Shield tokens
             </button>
           </div>
-          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
       </FormPageLayout>
-      {busy && <ProofLoader message={status || "Generating…"} />}
     </>
   );
 }

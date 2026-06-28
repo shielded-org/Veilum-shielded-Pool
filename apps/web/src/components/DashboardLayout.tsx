@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { ConnectWallet, useShieldedSync } from "./ConnectWallet";
+import { TransactionProgressPanel } from "./ui/TransactionProgressPanel";
 import { ConnectPrompt } from "./ui/ConnectPrompt";
 import { KeyDerivationDialog } from "./ui/KeyDerivationDialog";
 import { NetworkBadge } from "./ui/NetworkBadge";
@@ -25,6 +26,7 @@ import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { isAspOperator } from "../lib/asp-admin";
 import { DASHBOARD_PAGE_META, dashboardNavGroups } from "../lib/dashboard-routes";
 import { useShieldedStore } from "../store/use-shielded-store";
+import { useTxPanelStore } from "../store/use-tx-panel-store";
 
 export function DashboardLayout() {
   return <DashboardLayoutInner />;
@@ -45,7 +47,9 @@ function DashboardLayoutInner() {
   const network = useShieldedStore((s) => s.network);
   const notes = useShieldedStore((s) => s.notes);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
+  const notesChainReady = useShieldedStore((s) => s.notesChainReady);
   const relayerOk = useShieldedStore((s) => s.relayerOk);
+  const activeTxId = useTxPanelStore((s) => s.activeTxId);
   const isTestnet = network === "testnet" || network === "futurenet" || network === "local";
   const showAspOperator = isTestnet && isAspOperator(wallet);
   const [navOpen, setNavOpen] = useState(false);
@@ -55,15 +59,15 @@ function DashboardLayoutInner() {
 
   const pageMetaLine =
     location.pathname === "/dashboard/notes"
-      ? scanLoading
-        ? "Scanning…"
+      ? scanLoading || !notesChainReady
+        ? "Syncing…"
         : `${notes.length} total notes`
       : location.pathname === "/dashboard"
         ? `${network} · pool operations`
         : undefined;
 
   const description =
-    location.pathname === "/dashboard/notes" && !scanLoading && notes.length > 0
+    location.pathname === "/dashboard/notes" && notesChainReady && notes.length > 0
       ? `${pageMeta.description} · ${notes.filter((n) => !n.spent).length} available`
       : pageMeta.description;
 
@@ -231,6 +235,8 @@ function DashboardLayoutInner() {
           </NavLink>
         ))}
       </nav>
+
+      <TransactionProgressPanel txId={activeTxId} />
     </div>
   );
 }

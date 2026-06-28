@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { applyNoteSpendOutcome } from "../lib/note-store";
-import { syncShieldedWalletNow } from "../lib/sync-shielded-now";
-import { ProofLoader } from "../components/ProofLoader";
 import { AmountField } from "../components/ui/AmountField";
 import { NotePicker } from "../components/ui/NotePicker";
 import { FormAsideList, FormAsidePanel, FormPageLayout } from "../components/ui/FormPageLayout";
-import { StatusMessage } from "../components/ui/StatusMessage";
 import { useTokenRegistry } from "../hooks/use-token-registry";
 import { useWallet } from "../hooks/use-wallet";
+import { useWalletTransactions } from "../hooks/use-wallet-transactions";
 import { fetchAspStatus, type AspStatus } from "../lib/asp";
 import { loadNetworkConfig } from "../lib/config";
 import {
@@ -16,7 +13,7 @@ import {
   pickNoteForTransfer,
   tokenKey,
 } from "../lib/note-groups";
-import { contractSuccess, finishNotify, notifyLoading } from "../lib/notify";
+import { runUnshieldJob } from "../lib/shielded-tx-runner";
 import { executeUnshield } from "../lib/shield-ops";
 import { useUnspentNotes } from "../hooks/use-shielded-selectors";
 import { useShieldedStore } from "../store/use-shielded-store";
@@ -26,8 +23,6 @@ import type { Hex32 } from "../lib/types";
 export function UnshieldPage() {
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
   const relayerOk = useShieldedStore((s) => s.relayerOk);
@@ -37,10 +32,9 @@ export function UnshieldPage() {
   const viewingKey = useShieldedStore((s) => s.viewingKey);
   const viewingPub = useShieldedStore((s) => s.viewingPub);
   const ownerPk = useShieldedStore((s) => s.ownerPk);
-  const bumpRouteCursor = useShieldedStore((s) => s.bumpRouteCursor);
-  const setNotes = useShieldedStore((s) => s.setNotes);
+  const routeCursor = useShieldedStore((s) => s.routeCursor);
   const addTransaction = useShieldedStore((s) => s.addTransaction);
-  const updateTransaction = useShieldedStore((s) => s.updateTransaction);
+  const transactions = useWalletTransactions();
   const [selectedTokenKey, setSelectedTokenKey] = useState("");
   const registry = useTokenRegistry();
   const groups = useMemo(() => groupUnspentNotesByToken(notes), [notes]);
@@ -49,6 +43,7 @@ export function UnshieldPage() {
   const selectedSymbol = registry?.symbolForField(selectedGroup?.token) ?? "token";
   const [aspStatus, setAspStatus] = useState<AspStatus | null>(null);
   const [aspEnforced, setAspEnforced] = useState(false);
+  const withdrawPending = transactions.some((t) => t.type === "unshield" && t.status === "pending");
 
   useEffect(() => {
     if (!ownerPk) return;
@@ -70,7 +65,7 @@ export function UnshieldPage() {
     }
   }, [groups, selectedTokenKey]);
 
-  async function onUnshield() {
+  function onUnshield() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
     const withdrawAmount = parseTokenAmount(amount);
     const note = pickNoteForTransfer(selectedGroup, withdrawAmount);
@@ -83,78 +78,56 @@ export function UnshieldPage() {
     }
 
     const to = recipient.trim() || wallet;
-    setBusy(true);
     const txId = crypto.randomUUID();
-    const loadingToast = notifyLoading("Submitting withdrawal…");
-    addTransaction({
+    const amountLabel = `${amount} ${registry?.symbolForField(note.token) ?? "token"}`;
+    const routeCursorAtSubmit = routeCursor;
+
+    addTransaction(wallet, {
       id: txId,
+      walletAddress: wallet,
       type: "unshield",
       status: "pending",
-      amount: `${amount} ${registry?.symbolForField(note.token) ?? "token"}`,
+      amount: amountLabel,
       createdAt: new Date().toISOString(),
+      progressStep: "prepare",
+      progressMessage: "Starting withdrawal…",
+      progressPercent: 8,
     });
-    try {
-      const config = await loadNetworkConfig(network);
-      const contractId = config.contracts.aspGate ?? config.contracts.shieldedPool;
-      updateTransaction(txId, { contractId });
-      setStatus("Generating proof and submitting…");
-      const result = await executeUnshield({
-        config,
-        wallet,
-        keys: {
-          spendingKey: BigInt(spendingKey),
-          viewingPriv: BigInt(viewingKey),
-          viewingPub,
-          ownerPk: ownerPk as Hex32,
-        },
-        note,
-        recipientAddress: to,
-        amount: withdrawAmount,
-        leaves: merkleLeaves,
-        routeCursor: bumpRouteCursor(),
-        onStatus: setStatus,
-      });
-      setNotes(
-        applyNoteSpendOutcome(
-          useShieldedStore.getState().notes,
-          result.spentNoteId,
-          result.changeNote
-        )
-      );
-      await syncShieldedWalletNow();
-      updateTransaction(txId, {
-        status: "confirmed",
-        txHash: result.txHash ?? undefined,
-        contractId,
-      });
-      finishNotify(loadingToast, {
-        ok: true,
-        ...contractSuccess.unshield(),
-        txHash: result.txHash,
-      });
-      setAmount("");
-      setRecipient("");
-      setStatus("");
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      updateTransaction(txId, {
-        status: "failed",
-        detail: message,
-      });
-      finishNotify(loadingToast, { ok: false, message });
-      setStatus(message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  const statusVariant =
-    status.toLowerCase().includes("error") ||
-    status.toLowerCase().includes("fail") ||
-    status.toLowerCase().includes("not applied") ||
-    status.toLowerCase().includes("did not succeed")
-      ? "error"
-      : "info";
+    runUnshieldJob({
+      wallet,
+      txId,
+      amountLabel,
+      run: async (onStatus) => {
+        const config = await loadNetworkConfig(network);
+        const contractId = config.contracts.aspGate ?? config.contracts.shieldedPool;
+        const result = await executeUnshield({
+          config,
+          wallet,
+          keys: {
+            spendingKey: BigInt(spendingKey),
+            viewingPriv: BigInt(viewingKey),
+            viewingPub,
+            ownerPk: ownerPk as Hex32,
+          },
+          note,
+          recipientAddress: to,
+          amount: withdrawAmount,
+          leaves: merkleLeaves,
+          routeCursor: routeCursorAtSubmit,
+          onStatus,
+        });
+        return {
+          txHash: result.txHash,
+          spentNoteId: result.spentNoteId,
+          contractId,
+        };
+      },
+    });
+
+    setAmount("");
+    setRecipient("");
+  }
 
   const parsedAmount = (() => {
     try {
@@ -234,6 +207,13 @@ export function UnshieldPage() {
             </p>
           ) : null}
 
+          {withdrawPending ? (
+            <p className="form-notice">
+              A withdrawal is processing in the background. Track progress from Recent activity or the dock
+              at the bottom of the screen.
+            </p>
+          ) : null}
+
           <p className="form-notice form-notice--public">
             <span className="form-notice__label">Public withdrawal</span>
             Moves funds from your private balance to a public Stellar address. The recipient and
@@ -260,7 +240,7 @@ export function UnshieldPage() {
                 onChange={setAmount}
                 symbol={selectedSymbol}
                 maxAmount={selectedGroup?.maxNoteAmount}
-                disabled={!selectedGroup || !relayerOk || aspStatus === "denied"}
+                disabled={!selectedGroup || !relayerOk || aspStatus === "denied" || withdrawPending}
                 hint={amountHint}
               />
             </section>
@@ -277,7 +257,7 @@ export function UnshieldPage() {
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
                   placeholder={wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)} (connected wallet)` : "G…"}
-                  disabled={!relayerOk || aspStatus === "denied"}
+                  disabled={!relayerOk || aspStatus === "denied" || withdrawPending}
                 />
                 <p className="field-hint">
                   Public Stellar address (G…). Defaults to your connected wallet if left empty.
@@ -305,7 +285,7 @@ export function UnshieldPage() {
             <button
               className="btn btn-primary btn-lg withdraw-form__submit"
               disabled={
-                busy ||
+                withdrawPending ||
                 !relayerOk ||
                 aspStatus === "denied" ||
                 !wallet ||
@@ -320,10 +300,8 @@ export function UnshieldPage() {
               Withdraw publicly
             </button>
           </div>
-          {status && <StatusMessage variant={statusVariant}>{status}</StatusMessage>}
         </div>
       </FormPageLayout>
-      {busy && <ProofLoader message={status} />}
     </>
   );
 }
