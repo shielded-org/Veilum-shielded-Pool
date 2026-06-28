@@ -16,19 +16,17 @@
   padding: 1.5rem 1.5rem 1.25rem;
   border-radius: 1rem;
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  background: var(--bg-elevated);
-  box-shadow:
-    0 24px 48px -12px var(--nav-shadow),
-    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  background: var(--bg-elevated-2);
+  box-shadow: var(--elevation-2);
   text-align: left;
 }
 
 [data-theme="dark"] .onboarding-dialog {
   background: linear-gradient(
     165deg,
-    color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)) 0%,
-    var(--bg-elevated) 45%,
-    var(--bg-terminal) 100%
+    color-mix(in srgb, var(--accent) 8%, var(--bg-elevated-2)) 0%,
+    var(--bg-elevated-2) 45%,
+    var(--bg-sunken) 100%
   );
 }
 
