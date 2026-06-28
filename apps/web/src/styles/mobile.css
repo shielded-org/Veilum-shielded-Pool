@@ -72,6 +72,9 @@
     box-shadow: 8px 0 32px oklch(0% 0 0 / 0.35);
     padding-top: max(12px, env(safe-area-inset-top));
     padding-bottom: max(16px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .dashboard-shell--nav-open .dashboard-sidebar {
@@ -122,7 +125,7 @@
 
   .dashboard-topbar {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 10px;
     padding: 12px 0;
   }
@@ -136,10 +139,88 @@
   }
 
   .dashboard-topbar__actions {
+    width: auto;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .dashboard-topbar__cluster--desktop {
+    display: none;
+  }
+
+  .dashboard-topbar__cluster--mobile {
+    display: flex;
+  }
+
+  .dashboard-sidebar__mobile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: auto;
+    padding: 16px 12px 8px;
+    border-top: 1px solid var(--sidebar-border);
+    overflow: visible;
+    position: relative;
+    z-index: 2;
+  }
+
+  .dashboard-sidebar__mobile-controls .network-badge {
+    align-self: flex-start;
+  }
+
+  .dashboard-sidebar__theme-toggle {
     width: 100%;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 8px;
+    justify-content: center;
+  }
+
+  .dashboard-sidebar__mobile-controls .connect-wallet-root {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-sidebar__mobile-controls .wallet-connect {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-sidebar__mobile-controls .wallet-connect__menu-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  .dashboard-sidebar__mobile-controls .wallet-connect__connected {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  .dashboard-sidebar__mobile-controls .wallet-connect__menu {
+    top: auto;
+    bottom: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    min-width: 0;
+    width: 100%;
+    box-shadow:
+      0 -4px 6px oklch(0% 0 0 / 0.06),
+      0 -12px 28px oklch(0% 0 0 / 0.14);
+  }
+
+  .dashboard-sidebar__mobile-controls .wallet-connect .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-sidebar__footer {
+    margin-top: 0;
+    padding-top: 12px;
+  }
+
+  .dashboard-page .page-header {
+    margin-bottom: 28px;
   }
 
   .dashboard-bottom-nav {
@@ -198,14 +279,76 @@
     min-width: 0;
   }
 
-  .portfolio-chart {
-    grid-template-columns: 1fr;
+  .portfolio-section__body {
+    flex-direction: column;
+    align-items: stretch;
     gap: 20px;
+  }
+
+  .portfolio-section__total-block {
+    flex: none;
+  }
+
+  .portfolio-chart {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px 16px;
+    align-items: center;
     justify-items: stretch;
+    flex: none;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .portfolio-chart__donut {
+    width: 72px;
+    height: 72px;
+    justify-self: center;
+  }
+
+  .portfolio-chart__svg {
+    width: 72px;
+    height: 72px;
+  }
+
+  .portfolio-chart__center {
+    display: none;
   }
 
   .portfolio-bars {
     width: 100%;
+  }
+
+  .portfolio-bar {
+    gap: 8px;
+  }
+
+  .portfolio-chart--loading .balance-skeleton--donut {
+    width: 72px;
+    height: 72px;
+  }
+
+  .faucet-summary {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+  }
+
+  .faucet-summary .transfer-summary__row {
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  .faucet-form .form-actions--split {
+    gap: 8px;
+    margin-top: 4px;
+    padding-top: 14px;
+  }
+
+  .faucet-form .form-actions--split .btn-lg {
+    width: 100%;
+    flex: 0 0 auto;
+    padding: 11px 16px;
+    font-size: 14px;
+    min-height: 44px;
   }
 
   .dashboard-metrics {
@@ -235,6 +378,7 @@
 
   .form-actions--split .btn-lg {
     width: 100%;
+    flex: 0 0 auto;
   }
 
   .faucet-xlm-panel {
@@ -545,20 +689,6 @@
 @media (max-width: 600px) {
   .dashboard-metrics {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-topbar__actions {
-    justify-content: space-between;
-  }
-
-  .wallet-connect {
-    width: 100%;
-  }
-
-  .wallet-connect__connected {
-    flex: 1;
-    min-width: 0;
-    max-width: 100%;
   }
 
   .breadcrumb {

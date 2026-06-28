@@ -152,6 +152,12 @@ function DashboardLayoutInner() {
           </div>
         ))}
 
+        <div className="dashboard-sidebar__mobile-controls" aria-label="Wallet and settings">
+          <ThemeToggle className="dashboard-sidebar__theme-toggle" variant="labeled" />
+          <NetworkBadge network={network} />
+          <ConnectWallet />
+        </div>
+
         <div className="dashboard-sidebar__footer">
           <OnboardingResumeLink />
           {showAspOperator ? (
@@ -203,10 +209,15 @@ function DashboardLayoutInner() {
             </ol>
           </div>
           <div className="dashboard-topbar__actions">
-            <ThemeToggle />
-            <ServiceStatusPill online={relayerOk} />
-            <NetworkBadge network={network} />
-            <ConnectWallet />
+            <div className="dashboard-topbar__cluster dashboard-topbar__cluster--desktop">
+              <ThemeToggle />
+              <ServiceStatusPill online={relayerOk} />
+              <NetworkBadge network={network} />
+              <ConnectWallet />
+            </div>
+            <div className="dashboard-topbar__cluster dashboard-topbar__cluster--mobile">
+              <ServiceStatusPill online={relayerOk} />
+            </div>
           </div>
         </header>
 

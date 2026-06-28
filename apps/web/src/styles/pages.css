@@ -1277,6 +1277,21 @@
   flex-shrink: 0;
 }
 
+.dashboard-topbar__cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.dashboard-topbar__cluster--mobile {
+  display: none;
+}
+
+.dashboard-sidebar__mobile-controls {
+  display: none;
+}
+
 /* Breadcrumb */
 
 .breadcrumb {

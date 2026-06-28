@@ -17,7 +17,7 @@ export function ConnectWallet() {
   const { wallet, busy, error, connect, disconnect, showSyncKeys } = useWalletConnection();
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <div className="connect-wallet-root" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       <WalletConnectButton
         address={wallet}
         busy={busy}
