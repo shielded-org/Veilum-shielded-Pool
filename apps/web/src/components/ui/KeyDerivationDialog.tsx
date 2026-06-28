@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 
-import { IconSpinner, IconVeilumMark } from "./icons";
+import { useReducedMotion } from "../../hooks/use-reduced-motion";
+import { Button } from "./Button";
+import { IconVeilumMark } from "./icons";
 
 type KeyDerivationDialogProps = {
   open: boolean;
@@ -23,6 +25,9 @@ export function KeyDerivationDialog({
   onProceed,
   onCancel,
 }: KeyDerivationDialogProps) {
+  const reducedMotion = useReducedMotion();
+  const motionDuration = reducedMotion ? 0 : 0.22;
+
   return (
     <AnimatePresence>
       {open ? (
@@ -40,7 +45,7 @@ export function KeyDerivationDialog({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: motionDuration }}
           >
             <div className="onboarding-dialog__head">
               <span className="onboarding-dialog__mark" aria-hidden>
@@ -103,18 +108,12 @@ export function KeyDerivationDialog({
             {error ? <p className="badge err onboarding-dialog__error">{error}</p> : null}
 
             <div className="onboarding-dialog__actions">
-              <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>
+              <Button variant="secondary" onClick={onCancel} disabled={busy}>
                 Not now
-              </button>
-              <button type="button" className="btn btn-primary" onClick={onProceed} disabled={busy}>
-                {busy ? (
-                  <>
-                    <IconSpinner size={16} /> Waiting in wallet…
-                  </>
-                ) : (
-                  "Sign message"
-                )}
-              </button>
+              </Button>
+              <Button variant="primary" onClick={onProceed} loading={busy}>
+                {busy ? "Waiting in wallet…" : "Sign message"}
+              </Button>
             </div>
           </motion.div>
         </motion.div>
