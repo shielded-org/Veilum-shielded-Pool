@@ -464,18 +464,22 @@
   padding: 10px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-left-color: var(--border);
   margin-bottom: 16px;
 }
 
 .alert-banner--warn {
   background: var(--warning-soft);
   border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
+  border-left-color: var(--warning);
   color: var(--warning);
 }
 
 .alert-banner--error {
   background: var(--error-soft);
   border-color: color-mix(in srgb, var(--error) 28%, var(--border));
+  border-left-color: var(--error);
   color: var(--error);
 }
 
@@ -619,10 +623,10 @@
 
 .portfolio-section__total {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 2.75rem);
-  font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  font-size: clamp(2rem, 4vw, var(--text-display-size));
+  font-weight: var(--text-display-weight);
+  line-height: var(--text-display-leading);
+  letter-spacing: var(--text-display-tracking);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
