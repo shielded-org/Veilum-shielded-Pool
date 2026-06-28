@@ -1,9 +1,20 @@
 import { Link } from "react-router-dom";
 
 import { BalanceItemSkeleton } from "./BalanceItemSkeleton";
+import { DisplayCurrencyToggle } from "./DisplayCurrencyToggle";
 import { IconEye, IconEyeOff } from "./icons";
 import { PortfolioChart } from "./PortfolioChart";
 import { PortfolioChartSkeleton } from "./PortfolioChartSkeleton";
+import { useDisplayCurrency } from "../../hooks/use-display-currency";
+import { useFxRates } from "../../hooks/use-fx-rates";
+import {
+  formatDisplayCurrency,
+  formatEurcUsdApprox,
+  isEurStable,
+  maskDisplayTotal,
+  portfolioNeedsFxRate,
+  portfolioTotalInDisplay,
+} from "../../lib/portfolio-value";
 import { STABLE_CATALOG, type StableSymbol } from "../../lib/tokens";
 import { formatStableAmount, maskStableAmount } from "../../lib/utils";
 
@@ -26,6 +37,7 @@ type BalanceOverviewProps = {
 };
 
 const LOADING_PLACEHOLDERS = 3;
+const DEFAULT_EUR_USD = 1.08;
 
 function tokenName(symbol: string): string {
   if (symbol in STABLE_CATALOG) {
@@ -38,6 +50,14 @@ function maskAmount(value: string, symbol: string, reveal: boolean) {
   return reveal ? value : maskStableAmount(symbol);
 }
 
+function formatRateAge(fetchedAt: number | null): string | null {
+  if (!fetchedAt) return null;
+  const mins = Math.max(0, Math.round((Date.now() - fetchedAt) / 60_000));
+  if (mins < 1) return "just now";
+  if (mins === 1) return "1 min ago";
+  return `${mins} min ago`;
+}
+
 export function BalanceOverview({
   assets,
   reveal,
@@ -48,24 +68,77 @@ export function BalanceOverview({
   unspentCount,
   totalNotes,
 }: BalanceOverviewProps) {
+  const { displayCurrency } = useDisplayCurrency();
+  const needsFx = portfolioNeedsFxRate(assets);
+  const fx = useFxRates(ready && needsFx);
+  const effectiveEurUsd = fx.eurUsd ?? DEFAULT_EUR_USD;
+  const portfolioLoading = Boolean(loading || (needsFx && fx.loading && fx.eurUsd === null));
+
   const showEmpty = ready && !loading && assets.length === 0;
   const showPortfolio = ready && (loading || assets.length > 0);
+
+  const totalLabel =
+    !portfolioLoading
+      ? reveal
+        ? formatDisplayCurrency(
+            portfolioTotalInDisplay(assets, displayCurrency, effectiveEurUsd),
+            displayCurrency
+          )
+        : maskDisplayTotal(displayCurrency)
+      : null;
+
+  const rateFootnote =
+    needsFx && fx.eurUsd !== null && fx.source
+      ? `EUR/USD ${fx.eurUsd.toFixed(4)} via ${fx.source}${formatRateAge(fx.fetchedAt) ? ` · ${formatRateAge(fx.fetchedAt)}` : ""}`
+      : needsFx && fx.error
+        ? `EUR/USD estimate uses fallback rate — live quote unavailable`
+        : null;
 
   return (
     <div className="balance-panel">
       {showPortfolio ? (
-        <section className="portfolio-section card" aria-label="Portfolio allocation">
+        <section className="portfolio-section card" aria-label="Private portfolio">
           <header className="portfolio-section__header">
-            <h2>Allocation</h2>
-            <p className="portfolio-section__meta">
-              {loading ? "Calculating split…" : "Share of your shielded balance by asset"}
-            </p>
+            <div className="portfolio-section__title-row">
+              <div>
+                <h2>Private portfolio</h2>
+                <p className="portfolio-section__meta">
+                  {portfolioLoading
+                    ? "Updating your balance…"
+                    : "total private balance"}
+                </p>
+              </div>
+              {!portfolioLoading && assets.length > 0 ? <DisplayCurrencyToggle /> : null}
+            </div>
           </header>
-          {loading ? (
-            <PortfolioChartSkeleton />
-          ) : (
-            <PortfolioChart assets={assets} reveal={reveal} />
-          )}
+          <div className="portfolio-section__body">
+            <div className="portfolio-section__total-block" aria-live="polite">
+              {portfolioLoading ? (
+                <span className="balance-skeleton portfolio-section__total-skeleton-amount" />
+              ) : totalLabel ? (
+                <>
+                  <p
+                    className={`portfolio-section__total mono${!reveal ? " portfolio-section__total--masked" : ""}`}
+                  >
+                    {totalLabel}
+                  </p>
+                  {reveal && rateFootnote ? (
+                    <p className="portfolio-section__rate-note">{rateFootnote}</p>
+                  ) : null}
+                  {fx.error && needsFx && !fx.eurUsd ? (
+                    <p className="portfolio-section__rate-note portfolio-section__rate-note--warn">
+                      {fx.error} — showing approximate total
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            {portfolioLoading ? (
+              <PortfolioChartSkeleton />
+            ) : (
+              <PortfolioChart assets={assets} reveal={reveal} eurUsd={effectiveEurUsd} />
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -124,6 +197,11 @@ export function BalanceOverview({
                 <p className={`balance-item__amount${!reveal ? " balance-item__amount--masked" : ""}`}>
                   {maskAmount(formatStableAmount(amount, symbol), symbol, reveal)}
                 </p>
+                {isEurStable(symbol) ? (
+                  <p className="balance-item__fiat">
+                    {formatEurcUsdApprox(amount, effectiveEurUsd, reveal)}
+                  </p>
+                ) : null}
               </article>
             ))}
           </div>

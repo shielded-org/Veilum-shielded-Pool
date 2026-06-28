@@ -1,4 +1,5 @@
 import type { BalanceAsset } from "./BalanceOverview";
+import { amountToUsd } from "../../lib/portfolio-value";
 
 const TOKEN_COLORS: Record<string, string> = {
   USDC: "oklch(78% 0.14 175)",
@@ -18,6 +19,8 @@ const FALLBACK_COLORS = [
 type PortfolioChartProps = {
   assets: BalanceAsset[];
   reveal: boolean;
+  /** 1 EUR = eurUsd USD — used so EURC share reflects dollar value. */
+  eurUsd: number;
 };
 
 type Segment = {
@@ -26,15 +29,21 @@ type Segment = {
   color: string;
 };
 
-function buildSegments(assets: BalanceAsset[]): Segment[] {
-  const total = assets.reduce((sum, a) => sum + a.amount, 0n);
-  if (total <= 0n) return [];
+function buildSegments(assets: BalanceAsset[], eurUsd: number): Segment[] {
+  const weights = assets.map((asset, i) => ({
+    symbol: asset.symbol,
+    weight: amountToUsd(asset.amount, asset.symbol, eurUsd),
+    color: TOKEN_COLORS[asset.symbol] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+  }));
 
-  return assets
-    .map((asset, i) => ({
-      symbol: asset.symbol,
-      pct: Number((asset.amount * 10000n) / total) / 100,
-      color: TOKEN_COLORS[asset.symbol] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+  const total = weights.reduce((sum, w) => sum + w.weight, 0);
+  if (total <= 0) return [];
+
+  return weights
+    .map((row) => ({
+      symbol: row.symbol,
+      pct: (row.weight / total) * 100,
+      color: row.color,
     }))
     .sort((a, b) => b.pct - a.pct);
 }
@@ -44,10 +53,10 @@ function formatPct(pct: number, reveal: boolean) {
   return `${pct.toFixed(pct < 10 ? 1 : 0)}%`;
 }
 
-export function PortfolioChart({ assets, reveal }: PortfolioChartProps) {
-  const segments = buildSegments(assets);
+export function PortfolioChart({ assets, reveal, eurUsd }: PortfolioChartProps) {
+  const segments = buildSegments(assets, eurUsd);
   const radius = 36;
-  const stroke = 12;
+  const stroke = 18;
   const center = 48;
   const circumference = 2 * Math.PI * radius;
 
