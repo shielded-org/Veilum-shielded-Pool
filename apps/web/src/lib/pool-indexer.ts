@@ -223,6 +223,31 @@ export async function fetchIndexerOrderedMerkleLeaves(
   }
 }
 
+const INDEXER_EVENTS_CACHE_TTL_MS = 30_000;
+/** Empty tail-range responses expire quickly — indexer may not have caught up yet. */
+const INDEXER_EMPTY_TAIL_CACHE_TTL_MS = 3_000;
+const INDEXER_FETCH_RETRIES = 3;
+const indexerEventsCache = new Map<
+  string,
+  {
+    at: number;
+    result: { events: Api.EventResponse[]; reachable: boolean; channelFiltered: boolean };
+  }
+>();
+
+/** Bust cached indexer responses for a pool (e.g. before a fresh tail scan). */
+export function clearIndexerEventsCache(poolId?: string): void {
+  if (!poolId) {
+    indexerEventsCache.clear();
+    return;
+  }
+  for (const key of indexerEventsCache.keys()) {
+    if (key.startsWith(`${poolId}:`)) {
+      indexerEventsCache.delete(key);
+    }
+  }
+}
+
 /** Pool route events from the indexer for any ledger range. */
 export async function tryFetchIndexerRouteEvents(
   poolId: string,
@@ -235,8 +260,12 @@ export async function tryFetchIndexerRouteEvents(
   }
   const cacheKey = `${poolId}:${channelHex ?? "all"}:${fromLedger}:${toLedger}`;
   const hit = indexerEventsCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < INDEXER_EVENTS_CACHE_TTL_MS) {
-    return hit.result;
+  if (hit) {
+    const ttl =
+      hit.result.events.length === 0 ? INDEXER_EMPTY_TAIL_CACHE_TTL_MS : INDEXER_EVENTS_CACHE_TTL_MS;
+    if (Date.now() - hit.at < ttl) {
+      return hit.result;
+    }
   }
   try {
     const { events, channelFiltered } = await fetchIndexerEventsWithRetry(
@@ -266,16 +295,6 @@ export async function tryFetchHistoryGapEvents(
   }
   return tryFetchIndexerRouteEvents(poolId, deployLedger, window.oldest - 1);
 }
-
-const INDEXER_EVENTS_CACHE_TTL_MS = 30_000;
-const INDEXER_FETCH_RETRIES = 3;
-const indexerEventsCache = new Map<
-  string,
-  {
-    at: number;
-    result: { events: Api.EventResponse[]; reachable: boolean; channelFiltered: boolean };
-  }
->();
 
 function bytes32FromTopic(topic: xdr.ScVal): string | null {
   try {

@@ -1,14 +1,16 @@
+import type { PersistedNote } from "./note-persist";
 import type { Hex32, NetworkName } from "./types";
 import type { RpcLedgerWindow } from "./rpc-events";
 
-/** Ledger cursor only — notes are always rebuilt from on-chain route events. */
+/** Incremental scan cache per pool — cursor + indexer/RPC-verified notes only. */
 export type StoredScanCacheRow = {
   viewingPub: Hex32;
   lastScannedLedger: number;
   lastFullScanAt?: number;
   deployLedger?: number;
-  /** @deprecated legacy rows — ignored */
-  notes?: unknown[];
+  /** Notes were decrypted from indexer/RPC events in a completed scan. */
+  notesChainVerified?: boolean;
+  notes: PersistedNote[];
 };
 
 export type ScanCachePayload = {
@@ -16,10 +18,19 @@ export type ScanCachePayload = {
   lastScannedLedger: number;
   lastFullScanAt?: number;
   deployLedger?: number;
+  notesChainVerified?: boolean;
+  notes?: PersistedNote[];
 };
 
-export const FULL_SCAN_INTERVAL_MS = 3 * 60 * 1000;
 export const BACKGROUND_POLL_MS = 30_000;
+/** Faster incremental poll while the tab is visible (incoming private transfers). */
+export const VISIBLE_POLL_MS = 12_000;
+
+/** @deprecated Always RPC-tail when indexer lags chain head — kept for tests. */
+export const INDEXER_RPC_TAIL_LAG = 0;
+
+/** Re-scan this many ledgers before the scan cursor after a confirmed tx. */
+export const POST_TX_RESCAN_LEDGERS = 12;
 
 /** Include deploy ledger so redeploys do not reuse a stale cursor (shielded-token parity). */
 export function scanCacheKey(
@@ -37,25 +48,32 @@ export function payloadToStoredRow(payload: ScanCachePayload): StoredScanCacheRo
     lastScannedLedger: payload.lastScannedLedger,
     lastFullScanAt: payload.lastFullScanAt,
     deployLedger: payload.deployLedger,
+    notesChainVerified: payload.notesChainVerified === true,
+    notes: payload.notesChainVerified === true ? (payload.notes ?? []) : [],
   };
 }
 
+/**
+ * Incremental unless cache is missing, deploy changed, notes are empty, or caller forces full.
+ * A cursor without cached notes always triggers a full rescan (shielded-token parity).
+ */
 export function pickRefreshMode(
   priorCache: ScanCachePayload | null,
-  opts?: { hasNotes?: boolean; hasUnspentNotes?: boolean; deployLedger?: number }
+  opts?: { deployLedger?: number; forceFull?: boolean; hasNotes?: boolean }
 ): "full" | "incremental" {
-  if (!opts?.hasNotes) return "full";
-  if (opts.hasNotes && opts.hasUnspentNotes === false) return "full";
+  if (opts?.forceFull) return "full";
   if (
-    opts.deployLedger &&
+    opts?.deployLedger &&
     priorCache?.deployLedger &&
     priorCache.deployLedger !== opts.deployLedger
   ) {
     return "full";
   }
   if (!priorCache?.lastScannedLedger) return "full";
-  if (!priorCache.lastFullScanAt) return "full";
-  if (Date.now() - priorCache.lastFullScanAt > FULL_SCAN_INTERVAL_MS) return "full";
+  const hasCachedNotes =
+    priorCache.notesChainVerified === true &&
+    ((opts?.hasNotes ?? false) || (priorCache.notes?.length ?? 0) > 0);
+  if (!hasCachedNotes) return "full";
   return "incremental";
 }
 

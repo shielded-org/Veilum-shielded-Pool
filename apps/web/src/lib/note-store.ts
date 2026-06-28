@@ -21,41 +21,41 @@ export function deserializeNote(note: StoredNote): DecryptedNote {
   };
 }
 
-/** Full rescan: on-chain decrypted notes are authoritative; keep local metadata only. */
+/** Chain scan output merged with prior scan metadata (blinding, leaf index) only. */
 export function reconcileChainNotes(
   scanned: DecryptedNote[],
   previous: DecryptedNote[] = []
 ): DecryptedNote[] {
-  const prevById = new Map(previous.map((n) => [n.id, n]));
-  const reconciled = scanned.map((note) => {
-    const prev = prevById.get(note.id);
+  const prevByCommitment = new Map(previous.map((n) => [commitmentKey(n.commitment), n]));
+  return scanned.map((note) => {
+    const prev = prevByCommitment.get(commitmentKey(note.commitment));
     if (!prev) return { ...note, spent: undefined };
     return {
       ...note,
       blinding: prev.blinding || note.blinding,
       leafIndex: prev.leafIndex ?? note.leafIndex,
       txHash: note.txHash ?? prev.txHash,
-      spent: undefined,
+      spent: prev.spent === true ? true : undefined,
+      nullifier: prev.nullifier ?? note.nullifier,
     };
   });
-  // Keep local notes until chain scan confirms them (RPC lag / just-shielded).
-  const scannedCommitments = new Set(reconciled.map((n) => commitmentKey(n.commitment)));
-  const pendingLocal = previous.filter((n) => {
-    if (scannedCommitments.has(commitmentKey(n.commitment))) return false;
-    const suffix = n.id.split(":").pop() ?? "";
-    // Drop phantom optimistic notes keyed by relayer request id instead of a tx hash.
-    return /^[0-9a-f]{64}$/i.test(suffix.replace(/^0x/i, ""));
-  });
-  return pendingLocal.length > 0 ? mergeNotes(pendingLocal, reconciled) : reconciled;
+}
+
+/** Combine prior chain-verified wallet with notes discovered in an incremental scan range. */
+export function mergeIncrementalWalletNotes(
+  prior: DecryptedNote[],
+  scannedDelta: DecryptedNote[]
+): DecryptedNote[] {
+  if (scannedDelta.length === 0) return prior;
+  const reconciled = reconcileChainNotes(scannedDelta, prior);
+  const touched = new Set(scannedDelta.map((n) => commitmentKey(n.commitment)));
+  const untouched = prior.filter((n) => !touched.has(commitmentKey(n.commitment)));
+  return mergeNotes(untouched, reconciled);
 }
 
 /** Stable key for deduping the same note across id variants (`commit:txHash` vs `commit:requestId`). */
 export function commitmentKey(commitment: Hex32 | string): string {
   return commitment.replace(/^0x/i, "").toLowerCase();
-}
-
-function isStellarTxHash(value: string | undefined | null): value is string {
-  return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value.replace(/^0x/i, ""));
 }
 
 function preferNoteId(a: DecryptedNote, b: DecryptedNote): string {
@@ -107,13 +107,30 @@ export function applyNoteSpendOutcome(
 }
 
 export function shieldedTotal(notes: DecryptedNote[]): bigint {
-  return notes.filter((n) => !n.spent).reduce((sum, n) => sum + n.amount, 0n);
+  const seen = new Set<string>();
+  let sum = 0n;
+  for (const n of notes) {
+    if (n.spent) continue;
+    const key = commitmentKey(n.commitment);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sum += n.amount;
+  }
+  return sum;
 }
 
-/** Remove optimistic notes keyed by relayer request id (not a 64-char on-chain tx hash). */
+/** Remove notes not discoverable from indexer/RPC event decryption. */
 export function dropPhantomNoteIds(notes: DecryptedNote[]): DecryptedNote[] {
-  return notes.filter((n) => {
-    const suffix = n.id.split(":").pop() ?? "";
-    return /^[0-9a-f]{64}$/i.test(suffix.replace(/^0x/i, ""));
-  });
+  return notes.filter((n) => isConfirmedOnChainNote(n));
+}
+
+export function isStellarTxHash(value: string | undefined | null): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value.replace(/^0x/i, ""));
+}
+
+/** Note id references a 64-char on-chain tx hash (decrypted from a route event). */
+export function isConfirmedOnChainNote(note: DecryptedNote): boolean {
+  if (isStellarTxHash(note.txHash)) return true;
+  const suffix = note.id.split(":").pop() ?? "";
+  return isStellarTxHash(suffix);
 }

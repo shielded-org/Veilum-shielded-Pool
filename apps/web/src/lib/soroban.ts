@@ -126,6 +126,40 @@ export async function nullifierSpent(
   return Boolean(tx.result);
 }
 
+/**
+ * Poll until the pool marks a nullifier spent. Soroban RPC often lags behind
+ * getTransaction(SUCCESS) — a single immediate read can falsely return false.
+ */
+export async function waitForNullifierSpent(
+  rpcClient: SorobanRpc,
+  config: NetworkConfig,
+  source: string,
+  poolId: string,
+  nullifierHex: string,
+  opts?: {
+    attempts?: number;
+    delayMs?: number;
+    onWaiting?: (ctx: { attempt: number; attempts: number }) => void;
+  }
+): Promise<boolean> {
+  const attempts = opts?.attempts ?? 15;
+  const delayMs = opts?.delayMs ?? 1500;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      if (await nullifierSpent(rpcClient, config, source, poolId, nullifierHex)) {
+        return true;
+      }
+    } catch {
+      /* RPC flake — retry */
+    }
+    if (i < attempts - 1) {
+      opts?.onWaiting?.({ attempt: i, attempts });
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
+
 export async function mintToken(
   rpcClient: SorobanRpc,
   config: NetworkConfig,

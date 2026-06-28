@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchRelayerHealth } from "../lib/relayer";
 import {
   BACKGROUND_POLL_MS,
+  VISIBLE_POLL_MS,
   invalidateShieldedSync,
   syncShieldedWalletNow,
 } from "../lib/sync-shielded-now";
@@ -98,16 +99,45 @@ export function useShieldedSync() {
       void syncShieldedWalletNow({ background: true });
     }, BACKGROUND_POLL_MS);
 
+    let visiblePoll: ReturnType<typeof window.setInterval> | undefined;
+    const startVisiblePoll = () => {
+      if (visiblePoll != null) return;
+      visiblePoll = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void syncShieldedWalletNow({ background: true });
+        }
+      }, VISIBLE_POLL_MS);
+    };
+    const stopVisiblePoll = () => {
+      if (visiblePoll != null) {
+        window.clearInterval(visiblePoll);
+        visiblePoll = undefined;
+      }
+    };
+
+    const onResume = () => {
+      void syncShieldedWalletNow({ background: true, bustIndexerCache: true });
+    };
+
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        void syncShieldedWalletNow({ background: true });
+        onResume();
+        startVisiblePoll();
+      } else {
+        stopVisiblePoll();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onResume);
+    if (document.visibilityState === "visible") {
+      startVisiblePoll();
+    }
 
     return () => {
       window.clearInterval(poll);
+      stopVisiblePoll();
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onResume);
     };
   }, [hydrated, wallet, viewingPub, viewingKey, spendingKey, keyMaterialAddress, setSyncError]);
 }

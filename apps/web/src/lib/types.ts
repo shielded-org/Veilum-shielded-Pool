@@ -42,9 +42,13 @@ export type DecryptedNote = {
   createdAt?: string;
 };
 
+export type TxProgressStep = "prepare" | "witness" | "proof" | "submit" | "confirm" | "sync" | "done";
+
 export type TransactionRecord = {
   id: string;
-  type: "shield" | "transfer" | "unshield";
+  /** Connected wallet address when the tx was started. */
+  walletAddress: string;
+  type: "shield" | "transfer" | "unshield" | "receive";
   status: "pending" | "confirmed" | "failed";
   amount: string;
   txHash?: string;
@@ -52,6 +56,11 @@ export type TransactionRecord = {
   contractId?: string;
   createdAt: string;
   detail?: string;
+  progressStep?: TxProgressStep;
+  progressMessage?: string;
+  progressPercent?: number;
+  /** Note expected to be spent (transfer/unshield) — used for post-tx balance sync. */
+  spentNoteId?: string;
 };
 
 export type ShieldedKeys = {

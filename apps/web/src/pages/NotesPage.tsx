@@ -12,11 +12,12 @@ import { useShieldedStore } from "../store/use-shielded-store";
 export function NotesPage() {
   const notes = useShieldedStore((s) => s.notes);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
+  const notesChainReady = useShieldedStore((s) => s.notesChainReady);
   const registry = useTokenRegistry();
   const [showDetails, setShowDetails] = useState(true);
   const unspent = notes.filter((n) => !n.spent).length;
   const spent = notes.length - unspent;
-  const initialScan = scanLoading && notes.length === 0;
+  const notesLoading = scanLoading || !notesChainReady;
 
   return (
     <>
@@ -38,14 +39,14 @@ export function NotesPage() {
             Notes are found by scanning pool <code>route</code> events and decrypting with your viewing key.
           </p>
 
-          <NotesSummary total={notes.length} unspent={unspent} spent={spent} loading={initialScan} />
+          <NotesSummary total={notes.length} unspent={unspent} spent={spent} loading={notesLoading} />
 
           {notes.length === 0 ? (
             <EmptyState
-              title={initialScan ? "Scanning pool events…" : "No notes discovered yet"}
+              title={notesLoading ? "Syncing pool events…" : "No notes discovered yet"}
               body={
-                initialScan
-                  ? "This may take a moment on first load."
+                notesLoading
+                  ? "Loading verified notes from the indexer."
                   : "Shield tokens or receive a private transfer"
               }
             />

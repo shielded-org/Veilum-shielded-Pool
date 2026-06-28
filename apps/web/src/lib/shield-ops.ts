@@ -34,13 +34,13 @@ import {
   submitUnshieldToRelayer,
   waitForRelayerConfirmation,
 } from "./relayer";
+import { confirmShieldedSpendApplied } from "./tx-confirmation";
 import {
   approveToken,
   createRpc,
   getMerkleNextIndex,
   getTokenField,
   merkleHash2,
-  nullifierSpent,
   shieldRouted,
 } from "./soroban";
 import { useShieldedStore } from "../store/use-shielded-store";
@@ -396,21 +396,14 @@ export async function executePrivateTransfer(params: {
     throw new Error("Transfer submitted but no valid on-chain transaction hash was returned");
   }
 
-  const rpcClient = createRpc(params.config);
-  const txStatus = await rpcClient.getTransaction(txHash);
-  if (txStatus.status !== SorobanApi.GetTransactionStatus.SUCCESS) {
-    throw new Error(`Transfer transaction did not succeed on-chain (status=${txStatus.status})`);
-  }
-  const spentOnChain = await nullifierSpent(
-    rpcClient,
-    params.config,
-    params.wallet,
-    shieldedPool,
-    bytes32Arg(nf0)
-  );
-  if (!spentOnChain) {
-    throw new Error("Transfer was not applied on-chain — the source note nullifier is still unspent");
-  }
+  await confirmShieldedSpendApplied({
+    config: params.config,
+    wallet: params.wallet,
+    poolId: shieldedPool,
+    txHash,
+    nullifierHex: bytes32Arg(nf0),
+    onStatus: status,
+  });
 
   const changeNote =
     changeAmount > 0n
@@ -579,25 +572,14 @@ export async function executeUnshield(params: {
     throw new Error("Withdrawal submitted but no valid on-chain transaction hash was returned");
   }
 
-  const rpcClient = createRpc(params.config);
-  const txStatus = await rpcClient.getTransaction(txHash);
-  if (txStatus.status !== SorobanApi.GetTransactionStatus.SUCCESS) {
-    throw new Error(
-      `Withdrawal transaction did not succeed on-chain (status=${txStatus.status})`
-    );
-  }
-  const spentOnChain = await nullifierSpent(
-    rpcClient,
-    params.config,
-    params.wallet,
-    shieldedPool,
-    bytes32Arg(nf)
-  );
-  if (!spentOnChain) {
-    throw new Error(
-      "Withdrawal was not applied on-chain — the note nullifier is still unspent"
-    );
-  }
+  await confirmShieldedSpendApplied({
+    config: params.config,
+    wallet: params.wallet,
+    poolId: shieldedPool,
+    txHash,
+    nullifierHex: bytes32Arg(nf),
+    onStatus: status,
+  });
 
   const changeNote =
     changeAmount > 0n
