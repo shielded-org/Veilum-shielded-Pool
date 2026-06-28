@@ -1,0 +1,98 @@
+/**
+ * Veilum design tokens — Layer 1 (primitives) + motion + spacing.
+ * Semantic color tokens live in global.css ([data-theme]).
+ * Spec: docs/designspecificaton.md
+ */
+
+:root {
+  /* ── Spacing (8pt grid) ── */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 56px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+  --space-13: 120px;
+
+  /* ── Motion durations (never use arbitrary values) ── */
+  --duration-press: 80ms;
+  --duration-fast: 120ms;
+  --duration-hover: 150ms;
+  --duration-standard: 220ms;
+  --duration-medium: 320ms;
+  --duration-long: 500ms;
+  --duration-max: 800ms;
+  --duration-balance: 900ms;
+
+  /* ── Easing ── */
+  --ease-standard: ease-out;
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: ease-in;
+  --ease-emphasis: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── Interaction ── */
+  --focus-ring-offset: 2px;
+  --min-tap-target: 44px;
+  --state-disabled-opacity: 0.45;
+
+  /* ── Typography scale ── */
+  --text-display-size: 2.5rem;
+  --text-display-leading: 1.1;
+  --text-display-weight: 700;
+  --text-display-tracking: -0.04em;
+
+  --text-h1-size: 1.75rem;
+  --text-h1-leading: 1.2;
+  --text-h1-weight: 650;
+
+  --text-h2-size: 1.25rem;
+  --text-h2-leading: 1.35;
+  --text-h2-weight: 600;
+
+  --text-body-size: 0.9375rem;
+  --text-body-leading: 1.47;
+  --text-body-weight: 450;
+
+  --text-label-size: 0.6875rem;
+  --text-label-leading: 1.45;
+  --text-label-weight: 600;
+  --text-label-tracking: 0.06em;
+
+  --text-mono-data-size: 0.875rem;
+  --text-mono-data-leading: 1.43;
+  --text-mono-data-weight: 500;
+
+  /* ── Breakpoints (reference for media queries) ── */
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1440px;
+
+  /* ── Transitions (composed from tokens) ── */
+  --transition-hover: color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard);
+  --transition-press: transform var(--duration-press) var(--ease-standard);
+  --transition-open: opacity var(--duration-standard) var(--ease-enter),
+    transform var(--duration-standard) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-press: 0ms;
+    --duration-fast: 0ms;
+    --duration-hover: 0ms;
+    --duration-standard: 0ms;
+    --duration-medium: 0ms;
+    --duration-long: 0ms;
+    --duration-max: 0ms;
+    --duration-balance: 0ms;
+  }
+}
