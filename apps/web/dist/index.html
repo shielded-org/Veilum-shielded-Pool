@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,9 +12,8 @@
       (function () {
         try {
           var t = localStorage.getItem("veilum-color-theme");
-          if (t === "light" || t === "dark") {
-            document.documentElement.dataset.theme = t;
-          }
+          document.documentElement.dataset.theme =
+            t === "light" || t === "dark" ? t : "light";
         } catch (e) {}
       })();
     </script>
@@ -24,8 +23,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-DMYrz7GT.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CGtUKHoz.css">
+    <script type="module" crossorigin src="/assets/index-DBnY03zG.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BaQ3HbUI.css">
   </head>
   <body>
     <div id="root"></div>
