@@ -41,7 +41,9 @@ html {
   /* Core surfaces (OKLCH) */
   --bg: oklch(8% 0.012 75);
   --bg-elevated: oklch(13% 0.014 75);
+  --bg-sunken: oklch(6% 0.01 75);
   --bg-terminal: oklch(11% 0.02 200);
+  --bg-elevated-2: oklch(17% 0.016 75);
   --border: oklch(24% 0.015 75);
   --border-subtle: oklch(18% 0.012 75);
 
@@ -52,6 +54,7 @@ html {
 
   /* Accent — verified teal */
   --accent: oklch(78% 0.14 175);
+  --accent-strong: oklch(85% 0.13 175);
   --accent-hover: oklch(72% 0.14 175);
   --accent-soft: oklch(78% 0.14 175 / 0.12);
   --accent-foreground: oklch(8% 0.012 75);
@@ -65,6 +68,8 @@ html {
   /* Semantic */
   --success: oklch(72% 0.16 155);
   --success-soft: oklch(72% 0.16 155 / 0.12);
+  --amount-in: var(--success);
+  --amount-out: oklch(85% 0.01 90);
   --error: oklch(62% 0.18 25);
   --error-soft: oklch(62% 0.18 25 / 0.12);
   --warning: oklch(78% 0.12 85);
@@ -76,6 +81,20 @@ html {
   --hero-shadow: oklch(0% 0 0 / 0.4);
   --grid-line: oklch(24% 0.015 75 / 0.35);
   --spotlight: oklch(78% 0.14 175 / 0.18);
+
+  --focus-ring: oklch(78% 0.14 175 / 0.6);
+  --state-hover-overlay: oklch(100% 0 0 / 0.06);
+  --state-pressed-overlay: oklch(100% 0 0 / 0.1);
+
+  --elevation-0: none;
+  --elevation-1: none;
+  --elevation-2: 0 4px 24px oklch(0% 0 0 / 0.35), 0 1px 2px oklch(0% 0 0 / 0.2);
+  --elevation-3: 0 12px 40px oklch(0% 0 0 / 0.45);
+
+  --chart-1: oklch(78% 0.14 175);
+  --chart-2: oklch(68% 0.14 250);
+  --chart-3: oklch(78% 0.12 85);
+  --chart-4: oklch(74% 0.11 65);
 
   /* Dashboard sidebar */
   --sidebar-bg: oklch(10% 0.014 75 / 0.92);
@@ -134,7 +153,9 @@ html {
 
   --bg: oklch(98% 0.008 90);
   --bg-elevated: oklch(100% 0.004 90);
+  --bg-sunken: oklch(96% 0.009 90);
   --bg-terminal: oklch(97% 0.007 90);
+  --bg-elevated-2: oklch(100% 0.002 90);
   --border: oklch(90% 0.012 90);
   --border-subtle: oklch(94% 0.01 90);
 
@@ -143,18 +164,21 @@ html {
   --text-subtle: oklch(52% 0.02 75);
 
   --accent: oklch(55% 0.15 175);
+  --accent-strong: oklch(46% 0.16 175);
   --accent-hover: oklch(48% 0.15 175);
   --accent-soft: oklch(55% 0.15 175 / 0.1);
   --accent-foreground: oklch(99% 0.006 90);
 
-  /* Public = neutral label in light mode; no amber wash on surfaces */
-  --signal-public: oklch(46% 0.04 75);
-  --signal-public-soft: oklch(97% 0.007 90);
+  /* Public = warm clay/amber — distinct from muted text in light mode */
+  --signal-public: oklch(50% 0.09 60);
+  --signal-public-soft: oklch(95% 0.025 60);
   --signal-private: oklch(55% 0.15 175);
   --signal-private-soft: oklch(55% 0.15 175 / 0.08);
 
   --success: oklch(44% 0.14 155);
   --success-soft: oklch(44% 0.14 155 / 0.08);
+  --amount-in: var(--success);
+  --amount-out: oklch(30% 0.015 75);
   --error: oklch(48% 0.16 25);
   --error-soft: oklch(48% 0.16 25 / 0.08);
   --warning: oklch(48% 0.1 75);
@@ -167,6 +191,20 @@ html {
   --hero-shadow: oklch(20% 0.02 75 / 0.14);
   --grid-line: oklch(80% 0.012 75 / 0.55);
   --spotlight: oklch(48% 0.14 175 / 0.12);
+
+  --focus-ring: oklch(55% 0.15 175 / 0.5);
+  --state-hover-overlay: oklch(0% 0 0 / 0.04);
+  --state-pressed-overlay: oklch(0% 0 0 / 0.08);
+
+  --elevation-0: none;
+  --elevation-1: var(--shadow-card);
+  --elevation-2: 0 4px 24px oklch(20% 0.02 75 / 0.1), 0 1px 2px oklch(20% 0.02 75 / 0.06);
+  --elevation-3: 0 12px 40px oklch(20% 0.02 75 / 0.16);
+
+  --chart-1: oklch(58% 0.15 175);
+  --chart-2: oklch(52% 0.16 250);
+  --chart-3: oklch(60% 0.13 85);
+  --chart-4: oklch(56% 0.12 65);
 
   --sidebar-bg: oklch(97% 0.008 90);
   --sidebar-fg: oklch(24% 0.02 75);
@@ -294,7 +332,7 @@ code,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   padding: 11px 20px;
@@ -302,12 +340,16 @@ code,
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-  white-space: nowrap;
+  min-height: var(--min-tap-target);
+  transition: var(--transition-hover), var(--transition-press);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: var(--state-disabled-opacity);
   cursor: not-allowed;
   pointer-events: none;
 }
@@ -321,6 +363,12 @@ code,
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+.btn-primary-strong {
+  background: var(--accent-strong);
+  color: var(--accent-foreground);
+  border-color: var(--accent-strong);
 }
 
 .btn-secondary {
@@ -371,8 +419,9 @@ code,
 .card {
   background: var(--bg-elevated);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--space-5);
   border: 1px solid var(--border);
+  box-shadow: var(--elevation-1);
 }
 
 .card h2 {
@@ -431,9 +480,9 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0 14px;
-  background: var(--bg-terminal);
+  background: var(--bg-sunken);
   color: var(--text);
-  transition: border-color 0.15s ease;
+  transition: var(--transition-hover), border-color var(--duration-hover) var(--ease-standard);
 }
 
 textarea {
@@ -1173,12 +1222,12 @@ textarea:focus {
 }
 
 .tx-row--out .tx-row__amount {
-  color: var(--error);
+  color: var(--amount-out);
   font-weight: 500;
 }
 
 .tx-row--in .tx-row__amount {
-  color: var(--success);
+  color: var(--amount-in);
   font-weight: 500;
 }
 
