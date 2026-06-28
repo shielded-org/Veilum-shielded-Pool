@@ -7,13 +7,15 @@ import { TokenAmount } from "../components/ui/TokenAmount";
 import { TxRow } from "../components/ui/TxRow";
 import { IconDroplet, IconDownloadCloud, IconList, IconLock } from "../components/ui/icons";
 import { useTokenRegistry } from "../hooks/use-token-registry";
+import { useWalletTransactions } from "../hooks/use-wallet-transactions";
 import { DashboardConnectScreen } from "../components/ui/DashboardConnectScreen";
 import { useWalletConnection } from "../hooks/use-wallet-connection";
 import { humanizeSyncError, noteStatusLabel } from "../lib/user-messages";
 import { summarizeUnspentBySymbol } from "../lib/token-labels";
-import { formatStableAmount, shortenAddress } from "../lib/utils";
+import { formatStableAmount, shortenAddress, sortNewestFirst } from "../lib/utils";
 import { stableDenominationSymbol } from "../lib/tokens";
 import { useShieldedStore } from "../store/use-shielded-store";
+import { useTxPanelStore } from "../store/use-tx-panel-store";
 
 const QUICK_ACTIONS = [
   { to: "/dashboard/shield", icon: IconDroplet, label: "Shield", hint: "Deposit into pool" },
@@ -24,14 +26,6 @@ const QUICK_ACTIONS = [
 
 const PANEL_SCROLL_ROWS = 14;
 
-function sortNewestFirst<T extends { createdAt?: string }>(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-    const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-    return tb - ta;
-  });
-}
-
 export function DashboardHome() {
   const { wallet, busy, error, connectWallet, openKeySign, hasShieldKeys } = useWalletConnection();
   const reveal = useShieldedStore((s) => s.revealBalances);
@@ -39,11 +33,13 @@ export function DashboardHome() {
   const relayerOk = useShieldedStore((s) => s.relayerOk);
   const scanLoading = useShieldedStore((s) => s.scanLoading);
   const scanRefreshing = useShieldedStore((s) => s.scanRefreshing);
+  const notesChainReady = useShieldedStore((s) => s.notesChainReady);
   const syncError = useShieldedStore((s) => s.syncError);
   const syncWarnings = useShieldedStore((s) => s.syncWarnings);
   const keyMaterialAddress = useShieldedStore((s) => s.keyMaterialAddress);
   const notes = useShieldedStore((s) => s.notes);
-  const transactions = useShieldedStore((s) => s.transactions);
+  const transactions = useWalletTransactions();
+  const openTxPanel = useTxPanelStore((s) => s.openTxPanel);
   const registry = useTokenRegistry();
   const [showNoteDetails, setShowNoteDetails] = useState(true);
 
@@ -52,15 +48,10 @@ export function DashboardHome() {
   const ready = !!(wallet && hasKeys);
 
   const balanceAssets = registry ? summarizeUnspentBySymbol(notes, registry) : [];
-  const initialScan = scanLoading && notes.length === 0;
-  const balancesLoading = !ready || registry === null || initialScan;
-
-  const uniqueTransactions = transactions.filter((tx, i, arr) => {
-    return arr.findIndex((t) => t.id === tx.id) === i;
-  });
+  const balancesLoading = !ready || registry === null || !notesChainReady || scanLoading;
+  const balanceRefreshing = scanRefreshing && notesChainReady;
 
   const sortedNotes = sortNewestFirst(notes);
-  const sortedTransactions = sortNewestFirst(uniqueTransactions);
 
   const noteSummary = balanceAssets
     .map((a) => `${a.symbol} ${formatSummaryAmount(a.amount, a.symbol, reveal)}`)
@@ -139,7 +130,7 @@ export function DashboardHome() {
         reveal={reveal}
         onToggleReveal={() => setReveal(!reveal)}
         loading={balancesLoading}
-        refreshing={scanRefreshing && !initialScan}
+        refreshing={balanceRefreshing}
         ready={ready}
         unspentCount={unspent.length}
         totalNotes={notes.length}
@@ -148,11 +139,11 @@ export function DashboardHome() {
       <div className="dashboard-metrics">
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Available notes</span>
-          <span className="dashboard-metric__value">{ready && !initialScan ? unspent.length : "—"}</span>
+          <span className="dashboard-metric__value">{ready && notesChainReady ? unspent.length : "—"}</span>
         </div>
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Total notes</span>
-          <span className="dashboard-metric__value">{ready && !initialScan ? notes.length : "—"}</span>
+          <span className="dashboard-metric__value">{ready && notesChainReady ? notes.length : "—"}</span>
         </div>
         <div className="dashboard-metric">
           <span className="dashboard-metric__label">Wallet</span>
@@ -167,15 +158,15 @@ export function DashboardHome() {
           <h2>Notes</h2>
           <p className="card-desc">
             Balances discovered from encrypted route events on-chain.
-            {initialScan ? " Initial scan…" : scanRefreshing ? " Updating in background…" : ""}
+            {balancesLoading ? " Syncing from chain…" : balanceRefreshing ? " Updating in background…" : ""}
           </p>
           {!wallet || !hasKeys ? (
             <EmptyState
               title="No notes yet"
               body="Connect wallet and derive keys to scan notes"
             />
-          ) : initialScan ? (
-            <EmptyState title="Scanning pool events…" body="This may take a moment on first load." />
+          ) : balancesLoading ? (
+            <EmptyState title="Syncing pool events…" body="Loading your verified shielded balance from the indexer." />
           ) : notes.length === 0 ? (
             <EmptyState
               title="No notes found"
@@ -251,13 +242,13 @@ export function DashboardHome() {
 
         <div className="card">
           <h2>Recent activity</h2>
-          {sortedTransactions.length === 0 ? (
+          {transactions.length === 0 ? (
             <EmptyState title="No transactions yet" body="Shield, transfer, or withdraw to see activity here." />
           ) : (
             <div
-              className={`table-wrap${sortedTransactions.length > PANEL_SCROLL_ROWS ? " table-wrap--scroll" : ""}`}
+              className={`table-wrap${transactions.length > PANEL_SCROLL_ROWS ? " table-wrap--scroll" : ""}`}
               style={
-                sortedTransactions.length > PANEL_SCROLL_ROWS
+                transactions.length > PANEL_SCROLL_ROWS
                   ? ({ ["--scroll-rows" as string]: PANEL_SCROLL_ROWS } as CSSProperties)
                   : undefined
               }
@@ -273,8 +264,12 @@ export function DashboardHome() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedTransactions.map((tx) => (
-                    <TxRow key={tx.id} tx={tx} />
+                  {transactions.map((tx) => (
+                    <TxRow
+                      key={tx.id}
+                      tx={tx}
+                      onClick={() => openTxPanel(tx.id)}
+                    />
                   ))}
                 </tbody>
               </table>

@@ -1,4 +1,4 @@
-import type { Hex32 } from "./types";
+import type { Hex32, TransactionRecord } from "./types";
 import { BN254_FIELD_MODULUS } from "./types";
 import {
   stableCurrencyForSymbol,
@@ -67,20 +67,55 @@ export function formatTxAmountUsd(amount: string): string {
 }
 
 export function formatTxAmount(amount: string): string {
-  const match = amount.trim().match(/^([\d,.]+)\s+(\S+)$/);
+  const match = amount.trim().match(/^([+\-−])?([\d,.]+)\s+(\S+)$/);
   if (!match) return amount;
-  const num = Number(match[1].replace(/,/g, ""));
-  const symbol = match[2];
+  const num = Number(match[2].replace(/,/g, ""));
+  const symbol = match[3];
   const currency = stableCurrencyForSymbol(symbol);
   if (Number.isFinite(num)) {
-    return num.toLocaleString(STABLE_AMOUNT_LOCALE, {
+    const formatted = num.toLocaleString(STABLE_AMOUNT_LOCALE, {
       style: "currency",
       currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
+    return match[1] ? `${match[1]}${formatted}` : formatted;
   }
-  return `${stableDenominationSymbol(symbol)}${match[1]}`;
+  const prefix = match[1] ?? "";
+  return `${prefix}${stableDenominationSymbol(symbol)}${match[2]}`;
+}
+
+/** Sort activity rows and notes with the newest `createdAt` first. */
+export function sortNewestFirst<T extends { createdAt?: string; id?: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+    const aTime = Number.isFinite(ta) ? ta : 0;
+    const bTime = Number.isFinite(tb) ? tb : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    if (a.id && b.id) return b.id.localeCompare(a.id);
+    return 0;
+  });
+}
+
+export function sortTransactionsNewestFirst(rows: TransactionRecord[]): TransactionRecord[] {
+  return sortNewestFirst(rows);
+}
+
+/** Signed amount for recent activity (+ inflows, − outflows). */
+export function formatActivityAmount(type: TransactionRecord["type"], amount: string): string {
+  const base = formatTxAmount(amount.replace(/^[+\-−]\s*/, ""));
+  const signed = base.replace(/^[+\-−]/, "");
+  switch (type) {
+    case "transfer":
+    case "unshield":
+      return `−${signed}`;
+    case "receive":
+    case "shield":
+      return `+${signed}`;
+    default:
+      return signed;
+  }
 }
 
 export function maskStableAmount(stableSymbol: string): string {

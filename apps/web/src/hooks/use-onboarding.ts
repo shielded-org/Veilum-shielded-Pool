@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { useWallet } from "./use-wallet";
+import { useWalletTransactions } from "./use-wallet-transactions";
 import { useShieldedStore } from "../store/use-shielded-store";
 
 export type OnboardingStep = {
@@ -16,7 +17,7 @@ export function useOnboardingSteps() {
   const { address: wallet } = useWallet();
   const network = useShieldedStore((s) => s.network);
   const notes = useShieldedStore((s) => s.notes);
-  const transactions = useShieldedStore((s) => s.transactions);
+  const transactions = useWalletTransactions();
   const hasKeys = useShieldedStore((s) => !!(s.viewingKey && s.spendingKey && s.viewingPub));
   const dismissed = useShieldedStore((s) => s.onboardingDismissed);
 
@@ -26,7 +27,7 @@ export function useOnboardingSteps() {
     const connected = !!(wallet && hasKeys);
     const hasShieldedNote = notes.some((n) => !n.spent) || notes.length > 0;
     const hasPrivateTransfer = transactions.some(
-      (tx) => tx.type === "transfer" && tx.status === "confirmed"
+      (tx) => (tx.type === "transfer" || tx.type === "receive") && tx.status === "confirmed"
     );
 
     const all: OnboardingStep[] = [
