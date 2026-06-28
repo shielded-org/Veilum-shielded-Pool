@@ -2,18 +2,18 @@ import type { BalanceAsset } from "./BalanceOverview";
 import { amountToUsd } from "../../lib/portfolio-value";
 
 const TOKEN_COLORS: Record<string, string> = {
-  USDC: "oklch(78% 0.14 175)",
-  EURC: "oklch(68% 0.14 250)",
-  YLDS: "oklch(78% 0.12 85)",
-  MGUSD: "oklch(74% 0.11 65)",
+  USDC: "var(--chart-1)",
+  EURC: "var(--chart-2)",
+  YLDS: "var(--chart-3)",
+  MGUSD: "var(--chart-4)",
 };
 
 const FALLBACK_COLORS = [
-  "oklch(78% 0.14 175)",
-  "oklch(68% 0.14 250)",
-  "oklch(78% 0.12 85)",
-  "oklch(74% 0.11 65)",
-  "oklch(72% 0.16 155)",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--success)",
 ];
 
 type PortfolioChartProps = {
@@ -61,6 +61,7 @@ export function PortfolioChart({ assets, reveal, eurUsd }: PortfolioChartProps) 
   const circumference = 2 * Math.PI * radius;
 
   let offset = 0;
+  const segmentGap = segments.length > 1 ? 2 : 0;
 
   return (
     <div className="portfolio-chart" aria-label="Portfolio allocation">
@@ -76,9 +77,10 @@ export function PortfolioChart({ assets, reveal, eurUsd }: PortfolioChartProps) 
           />
           {reveal &&
             segments.map((seg) => {
-              const length = (seg.pct / 100) * circumference;
+              const gap = segmentGap;
+              const length = Math.max(0, (seg.pct / 100) * circumference - gap);
               const dashoffset = -offset;
-              offset += length;
+              offset += length + gap;
               return (
                 <circle
                   key={seg.symbol}
@@ -90,7 +92,7 @@ export function PortfolioChart({ assets, reveal, eurUsd }: PortfolioChartProps) 
                   strokeWidth={stroke}
                   strokeDasharray={`${length} ${circumference - length}`}
                   strokeDashoffset={dashoffset}
-                  strokeLinecap="butt"
+                  strokeLinecap="round"
                   transform={`rotate(-90 ${center} ${center})`}
                 />
               );
