@@ -33,7 +33,7 @@ export type DashboardPageMeta = {
 export const DASHBOARD_PAGE_META: Record<string, DashboardPageMeta> = {
   "/dashboard": {
     title: "Dashboard",
-    description: "Shielded balances, notes, and recent activity",
+    description: "",
   },
   "/dashboard/shield": {
     title: "Shield",
