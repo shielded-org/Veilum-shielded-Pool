@@ -114,7 +114,7 @@ export function DashboardHome() {
         </p>
       )}
 
-      <div className="dashboard-quick-actions">
+      {/* <div className="dashboard-quick-actions">
         {QUICK_ACTIONS.map(({ to, icon: Icon, label, hint }) => (
           <Link key={to} to={to} className="dashboard-quick-action">
             <span className="dashboard-quick-action__icon" aria-hidden>
@@ -124,7 +124,7 @@ export function DashboardHome() {
             <span>{hint}</span>
           </Link>
         ))}
-      </div>
+      </div> */}
 
       <BalanceOverview
         assets={balanceAssets}

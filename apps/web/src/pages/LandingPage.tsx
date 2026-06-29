@@ -119,7 +119,7 @@ export function LandingPage() {
               <span className="bg-gradient-to-r from-veilum-accent via-teal-200 to-veilum-accent bg-clip-text text-transparent">
                 without the spotlight
               </span>
-            </h1>
+          </h1>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-veilum-muted md:text-lg">
               Veilum lets you hold, send, and receive USDC and other stablecoins on Stellar without broadcasting
               every payment. Add and withdraw like normal — what happens in between stays yours.
@@ -203,7 +203,7 @@ export function LandingPage() {
           <p className="mt-4 text-veilum-muted">
             From everyday testnet sends to compliance-ready business flows — developer tools on the way.
           </p>
-        </div>
+                </div>
         <PricingCards />
       </section>
 
