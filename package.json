@@ -21,6 +21,8 @@
     "build:asp:render": "npm install && npm run build:sdk && bash scripts/bootstrap-asp-circuits.sh",
     "build:indexer:render": "npm install",
     "dev:web": "npm run dev --workspace @stellar-shielded/web",
+    "dev:extension": "npm run dev --workspace @veilum/wallet-extension",
+    "build:extension": "npm run build --workspace @veilum/wallet-extension",
     "dev:relayer": "npm run dev --workspace @stellar-shielded/relayer",
     "dev:indexer": "npm run dev --workspace @stellar-shielded/indexer",
     "deploy:indexer": "fly deploy --config fly.indexer.toml",
