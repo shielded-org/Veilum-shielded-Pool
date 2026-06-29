@@ -19,12 +19,14 @@ The system Implements **Association Set Providers (ASPs)** as a compliance bound
 - **Browser-based proving**: Client-side proof generation with Noir.js and Barretenberg (`@aztec/bb.js`), with CLI proving on the relayer for reliable on-chain verification
 - **Stellar integration**: Built on Soroban smart contracts, Stellar Wallets Kit, and standard token approvals for deposits
 - **Pool events indexer**: Archives pool contract events and merkle leaf commitments below Soroban RPC retention; serves ordered merkle snapshots for fast client sync
+- **Chrome wallet extension** (`apps/wallet-extension/`): Self-custodial popup wallet with encrypted vault, HD multi-account, shield/send/receive/withdraw, background indexer sync, and local activity history — same contracts and relayer as the web dashboard
 
 ## Demo Application
 
-The demo consists of five main parts:
+The demo consists of six main parts:
 
 - **Frontend** (`apps/web/`): Marketing pages (`/`, `/about`, `/how-to-use`) and a dashboard (`/dashboard/*`) for wallet connect, shield, transfer, unshield, notes, keys, faucet, and ASP admin
+- **Wallet extension** (`apps/wallet-extension/`): Chrome MV3 popup wallet — create or import a vault, shield public test stables, send privately to `shd_…` addresses, withdraw to `G…` accounts, and sync incoming transfers via the pool indexer (no Freighter or browser wallet required)
 - **Circuits** (`packages/circuits/`, `packages/circuits-asp/`): Noir circuits where constraints are defined — note hashing, Merkle membership, nullifiers, balance conservation, and ASP membership
 - **Smart contracts** (`packages/contracts/`): Soroban contracts that hold pool state, verify proofs, and process deposits, transfers, and withdrawals
 - **Services** (`services/relayer/`, `services/asp/`, `services/indexer/`): HTTP relayer for private operations, ASP service for membership registry and screening, and pool-events indexer for merkle/history archival
@@ -77,18 +79,39 @@ Canonical testnet contract IDs live in `apps/web/public/deployment.json`.
 
    Deployment addresses are written to `scripts/deployment.json` and copied to `apps/web/public/deployment.json`.
 
-4. **Serve the stack** (four terminals):
+4. **Serve the stack** (multiple terminals):
 
    ```bash
    npm run dev:relayer          # :8787
    npm run dev --workspace @stellar-shielded/asp   # :8788 (if ASP enabled)
    npm run dev:indexer          # :8789
    npm run dev:web              # Vite dev server
+   npm run dev:extension        # Extension popup UI (Vite; reload unpacked dist after protocol changes)
    ```
 
    Copy `apps/web/.env.example` to `apps/web/.env.local` if relayer, ASP, or indexer are not at default localhost URLs.
 
 5. Open the dashboard, connect a wallet, derive keys, and run **Shield → Transfer → Unshield**.
+
+**Option C — Wallet extension (testnet)**
+
+1. Build and load the unpacked extension:
+
+   ```bash
+   cd privacy
+   npm install
+   npm run build:extension
+   ```
+
+   In Chrome, open `chrome://extensions`, enable **Developer mode**, **Load unpacked**, and select `apps/wallet-extension/dist/`.
+
+2. Create or import a wallet in the popup (password-encrypted vault; shield keys derived locally from the Stellar secret — see [Keys and shielded addresses](#keys-and-shielded-addresses)).
+
+3. Fund the account with Friendbot if prompted, mint test stables from the **Faucet** tab, then **Shield → Send** (private) or **Withdraw** (unshield) → **Receive** / **Activity**.
+
+   Copy `apps/wallet-extension/.env.example` to `apps/wallet-extension/.env` if relayer or indexer are not at default testnet URLs. Rebuild after changing env vars.
+
+   Full extension docs: [`docs/wallet-extension.md`](docs/wallet-extension.md).
 
 ### Architecture Overview
 
@@ -208,7 +231,11 @@ Persistent state lives on a Fly volume (`indexer_data` → `/data`). Copy `servi
 
 #### Keys and shielded addresses
 
-Keys are derived locally from a one-time wallet signature — they never leave the browser.
+Keys are derived locally — they never leave the client.
+
+**Web dashboard** (`apps/web/`): one-time wallet signature consent (Stellar Wallets Kit) derives spending and viewing keys.
+
+**Wallet extension** (`apps/wallet-extension/`): deterministic derivation from the Stellar secret key in the encrypted vault (password unlock). Extension and Freighter users sharing the same `G…` address **do not** share shield keys unless they use the same derivation path (extension vault only).
 
 ```
 commitment = hash4(owner_pk, token_field, amount, blinding)
@@ -218,7 +245,9 @@ owner_pk   = hash2(spending_key, 1)
 
 Recipients share a **`shd_…` shielded address** (owner public key + viewing public key + network id + checksum) so senders can deliver encrypted notes without knowing the recipient's Stellar account. Routed delivery uses Keccak-derived **channels** and **subchannels** from the viewing key; note plaintext is ECDH-encrypted (secp256k1) with AES-256-GCM.
 
-Implementation: `packages/sdk/`, `apps/web/src/lib/keys.ts`, `apps/web/src/lib/shielded-address.ts`, `packages/sdk/src/routing.ts`.
+The extension polls the indexer on popup open and in the background while open to detect incoming private transfers and append them to local activity (same sync path as `apps/web/src/lib/sync-shielded-now.ts`).
+
+Implementation: `packages/sdk/`, `apps/web/src/lib/keys.ts`, `apps/web/src/lib/shielded-address.ts`, `apps/wallet-extension/src/vault/shield-keys.ts`, `packages/sdk/src/routing.ts`.
 
 ## Limitations
 
@@ -249,14 +278,17 @@ Implementation: `packages/sdk/`, `apps/web/src/lib/keys.ts`, `apps/web/src/lib/s
 | `STELLAR_HORIZON_URL`, `INDEXER_ASP_GATE_ID` | `services/indexer/.env` | Archived tx envelopes; ASP-gate leaf extraction |
 | `INDEXER_DATA_DIR`, `INDEXER_POLL_MS` | `services/indexer/.env` | Storage path and poll interval (default 60s) |
 | `VITE_RELAYER_URL`, `VITE_ASP_URL`, `VITE_INDEXER_URL` | `apps/web/.env.local` | Local dev service URLs |
+| `VITE_RELAYER_URL`, `VITE_INDEXER_URL`, `VITE_ASP_URL` | `apps/wallet-extension/.env` | Extension service URLs (rebuild after change) |
 
-Network RPC and passphrase: `packages/config/networks.json`. Deployment output: `scripts/deployment.json` → `apps/web/public/deployment.json`.
+Network RPC and passphrase: `packages/config/networks.json`. Deployment output: `scripts/deployment.json` → `apps/web/public/deployment.json` and `apps/wallet-extension/public/deployment.json` (via `npm run build:extension` prebuild sync).
 
 ## Repository layout
 
 ```
 privacy/
-├── apps/web/                  # Marketing site + dashboard
+├── apps/
+│   ├── web/                   # Marketing site + dashboard
+│   └── wallet-extension/      # Chrome MV3 popup wallet (Veilum)
 ├── packages/
 │   ├── circuits/              # shielded_transfer (12 public inputs)
 │   ├── circuits-asp/          # shielded_transfer_asp (14 public inputs)
