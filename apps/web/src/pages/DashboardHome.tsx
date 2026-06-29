@@ -130,10 +130,9 @@ export function DashboardHome() {
         assets={balanceAssets}
         reveal={reveal}
         onToggleReveal={() => setReveal(!reveal)}
-        onRefresh={() => void refreshShieldBalanceNow()}
+        onRefresh={refreshShieldBalanceNow}
         loading={balancesLoading}
         refreshing={balanceRefreshing}
-        refreshDisabled={scanRefreshing}
         ready={ready}
         unspentCount={unspent.length}
         totalNotes={notes.length}

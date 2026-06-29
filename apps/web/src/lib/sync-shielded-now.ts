@@ -8,6 +8,7 @@ import { scanDebug, scanDebugWarn } from "./scan-debug";
 import { filterUserSyncWarnings } from "./sync-warnings";
 import { recordIncomingTransferActivity } from "./incoming-activity";
 import { formatWalletError } from "./wallet-kit";
+import { withTimeout } from "./utils";
 import { refreshNoteSpendStatus, refreshShieldedWallet } from "./wallet-sync";
 import { useShieldedStore } from "../store/use-shielded-store";
 import { walletAddressAtom } from "../store/wallet-atoms";
@@ -25,60 +26,27 @@ type SyncOptions = {
   postTx?: boolean;
   /** Note that must show spent before applying scan to live balance (transfer/unshield). */
   expectSpentNoteId?: string;
-  /** Dashboard refresh button — incremental scan, timeout, re-check unspent nullifiers. */
+  /** Dashboard refresh button — prioritized incremental scan with timeout. */
   manualRefresh?: boolean;
 };
 
-const MANUAL_REFRESH_TIMEOUT_MS = 60_000;
+const MANUAL_REFRESH_TIMEOUT_MS = 30_000;
 
 let applyGeneration = 0;
 let syncChain: Promise<void> = Promise.resolve();
-let refreshingDepth = 0;
 
 function bumpApplyGeneration(): void {
   applyGeneration += 1;
 }
 
-function beginRefreshing(): void {
-  refreshingDepth += 1;
-  useShieldedStore.getState().setScanRefreshing(true);
-}
-
-function endRefreshing(): void {
-  refreshingDepth = Math.max(0, refreshingDepth - 1);
-  if (refreshingDepth === 0) {
-    useShieldedStore.getState().setScanRefreshing(false);
-  }
-}
-
-/**
- * Manual dashboard refresh — incremental indexer/RPC scan with nullifier checks.
- * Keeps current balances visible while syncing (background mode).
- */
+/** Manual dashboard refresh — indexer/RPC incremental scan; UI loading is local to the button. */
 export function refreshShieldBalanceNow(): Promise<void> {
-  bumpApplyGeneration();
-  const applyGen = applyGeneration;
-  const state = useShieldedStore.getState();
-  state.setSyncError(null);
-  refreshingDepth = 0;
-  state.setScanRefreshing(false);
-
-  const run = async () => {
-    await runFullScan(
-      {
-        background: true,
-        bustIndexerCache: true,
-        awaitNullifiers: true,
-        manualRefresh: true,
-      },
-      applyGen
-    );
-  };
-
-  syncChain = run().catch((e) => {
-    scanDebugWarn("sync:chainError", { error: formatWalletError(e) });
+  useShieldedStore.getState().setSyncError(null);
+  return syncShieldedWalletNow({
+    manualRefresh: true,
+    bustIndexerCache: true,
+    awaitNullifiers: true,
   });
-  return syncChain;
 }
 
 export function syncShieldedWalletNow(options?: SyncOptions): Promise<void> {
@@ -94,6 +62,15 @@ export function syncShieldedWalletNow(options?: SyncOptions): Promise<void> {
       }
     }
   };
+
+  if (options?.manualRefresh) {
+    bumpApplyGeneration();
+    syncChain = run().catch((e) => {
+      scanDebugWarn("sync:chainError", { error: formatWalletError(e) });
+    });
+    return syncChain;
+  }
+
   syncChain = syncChain.then(run).catch((e) => {
     scanDebugWarn("sync:chainError", { error: formatWalletError(e) });
   });
@@ -227,7 +204,7 @@ function applyScanResult(
   applyGen: number,
   cacheKey: string,
   result: Awaited<ReturnType<typeof refreshShieldedWallet>>,
-  background: boolean,
+  softBackground: boolean,
   expectSpentNoteId?: string,
   wallet?: string,
   network?: ReturnType<typeof useShieldedStore.getState>["network"],
@@ -288,7 +265,7 @@ function applyScanResult(
       notesChainVerified: cache?.notesChainVerified === true,
       notes: cache?.notesChainVerified === true ? cache.notes : undefined,
     });
-    if (!background || liveCount === 0) {
+    if (!softBackground || liveCount === 0) {
       state.setSyncWarnings(userWarnings);
     }
     scanDebug("sync:partial", {
@@ -296,7 +273,7 @@ function applyScanResult(
       liveCount,
       scannedCount: chainNotes.length,
     });
-  } else if (!background || liveCount === 0) {
+  } else if (!softBackground || liveCount === 0) {
     state.setSyncWarnings(userWarnings);
   }
 
@@ -312,6 +289,8 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
   if (state.keyMaterialAddress && wallet !== state.keyMaterialAddress) return false;
 
   const background = options.background ?? false;
+  const manualRefresh = options.manualRefresh ?? false;
+  const softBackground = background || manualRefresh;
   const initial = options.initial ?? false;
   const syncMerkle = options.syncMerkle ?? false;
   /** Background polls must confirm nullifiers — otherwise a stale incremental scan can re-add spent notes. */
@@ -321,15 +300,20 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
   scanDebug("sync:start", {
     initial,
     background,
+    manualRefresh,
     syncMerkle,
     awaitNullifiers,
     postTx: options.postTx ?? false,
     storeNotes: state.notes.length,
   });
 
-  const showRefreshing = background || options.postTx;
-  if (showRefreshing) {
-    beginRefreshing();
+  if (manualRefresh) {
+    console.info("[veilum] balance refresh started");
+  }
+
+  const showGlobalRefreshing = Boolean(options.postTx);
+  if (showGlobalRefreshing) {
+    state.setScanRefreshing(true);
   } else if (initial) {
     state.setSyncError(null);
   }
@@ -348,17 +332,6 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
     const showInitialLoading = initial && metadataNotes.length === 0;
     if (showInitialLoading) state.setScanLoading(true);
 
-    const unspentIds =
-      options.manualRefresh === true
-        ? metadataNotes.filter((n) => !n.spent).map((n) => n.id)
-        : undefined;
-    const forceSpendCheckNoteIds =
-      options.expectSpentNoteId != null
-        ? [options.expectSpentNoteId]
-        : unspentIds?.length
-          ? unspentIds
-          : undefined;
-
     const refreshWork = refreshShieldedWallet({
       network: state.network,
       wallet,
@@ -370,23 +343,20 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
       routeCursor: state.routeCursor,
       syncMerkle,
       awaitNullifiers,
-      background,
+      background: softBackground,
       forceFullScan: options.forceFullScan,
       bustIndexerCache: options.bustIndexerCache,
       postTx: options.postTx,
-      forceSpendCheckNoteIds,
+      manualRefresh,
+      forceSpendCheckNoteIds: options.expectSpentNoteId ? [options.expectSpentNoteId] : undefined,
     });
 
-    const result = options.manualRefresh
-      ? await Promise.race([
+    const result = manualRefresh
+      ? await withTimeout(
           refreshWork,
-          new Promise<never>((_, reject) => {
-            setTimeout(
-              () => reject(new Error("Balance refresh timed out — try again in a moment")),
-              MANUAL_REFRESH_TIMEOUT_MS
-            );
-          }),
-        ])
+          MANUAL_REFRESH_TIMEOUT_MS,
+          "Balance refresh timed out — try again in a moment"
+        )
       : await refreshWork;
 
     if (applyGen !== applyGeneration) {
@@ -403,14 +373,14 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
       applyGen,
       cacheKey,
       result,
-      background,
+      softBackground,
       options.expectSpentNoteId,
       wallet,
       state.network,
       poolId
     );
 
-    if (!awaitNullifiers && result.chainVerified && result.notes.length > 0 && !background) {
+    if (!awaitNullifiers && result.chainVerified && result.notes.length > 0 && !softBackground) {
       const notesForNullifiers = useShieldedStore.getState().notes;
       void refreshNoteSpendStatus({
         network: state.network,
@@ -446,13 +416,19 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
     if (applyGen === applyGeneration) {
       state.setSyncError(formatWalletError(e));
       scanDebugWarn("sync:error", { error: formatWalletError(e) });
+      if (manualRefresh) {
+        console.warn("[veilum] balance refresh failed:", formatWalletError(e));
+      }
     }
   } finally {
     if (applyGen === applyGeneration) {
       state.setScanLoading(false);
+      if (showGlobalRefreshing) {
+        state.setScanRefreshing(false);
+      }
     }
-    if (showRefreshing) {
-      endRefreshing();
+    if (manualRefresh) {
+      console.info("[veilum] balance refresh finished");
     }
   }
 

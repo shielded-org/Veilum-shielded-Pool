@@ -58,6 +58,8 @@ export async function refreshShieldedWallet(params: {
   bustIndexerCache?: boolean;
   /** After shield/transfer/unshield — widen scan window and always RPC-tail. */
   postTx?: boolean;
+  /** Dashboard refresh — incremental indexer scan, skip heavy RPC tail when indexer is near head. */
+  manualRefresh?: boolean;
   /** Re-check nullifier on-chain for these notes even if cached (post spend). */
   forceSpendCheckNoteIds?: string[];
   onScanProgress?: (found: number, eventsScanned: number) => void;
@@ -185,7 +187,10 @@ export async function refreshShieldedWallet(params: {
 
     const indexerLagsHead =
       indexerStatus.lastIndexedLedger < latestSeq || eventScanFrom > indexerTo;
-    if (indexerLagsHead || requireFreshScan) {
+    const indexerLag = latestSeq - (indexerStatus.lastIndexedLedger ?? latestSeq);
+    const skipRpcTailForManual =
+      params.manualRefresh === true && refreshMode === "incremental" && indexerLag <= 16;
+    if ((indexerLagsHead || requireFreshScan) && !skipRpcTailForManual) {
       let tailStart = Math.max(
         eventScanFrom,
         indexerStatus.lastIndexedLedger + 1,

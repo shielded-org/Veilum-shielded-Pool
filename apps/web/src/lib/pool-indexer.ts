@@ -3,6 +3,9 @@ import { scValToNative, xdr } from "@stellar/stellar-sdk";
 
 import type { RpcLedgerWindow } from "./rpc-events";
 import { getServiceUrls } from "./service-urls";
+import { withTimeout } from "./utils";
+
+const INDEXER_FETCH_TIMEOUT_MS = 20_000;
 
 export type IndexedPoolEventRow = {
   type?: string;
@@ -76,9 +79,10 @@ export async function fetchIndexerHealth(): Promise<{ ok: boolean; eventCount?: 
 export async function fetchIndexerPoolStatus(poolId: string): Promise<IndexerPoolStatus | null> {
   try {
     const { indexerUrl } = await getServiceUrls();
-    const statusRes = await fetch(
-      `${indexerUrl}/pool/${encodeURIComponent(poolId)}/status`,
-      { cache: "no-store" }
+    const statusRes = await withTimeout(
+      fetch(`${indexerUrl}/pool/${encodeURIComponent(poolId)}/status`, { cache: "no-store" }),
+      INDEXER_FETCH_TIMEOUT_MS,
+      "Indexer status request timed out"
     );
     if (statusRes.ok) {
       const body = (await statusRes.json()) as Partial<IndexerPoolStatus>;
@@ -124,7 +128,11 @@ export async function fetchIndexerPoolEvents(
   if (normalizedChannel) {
     url.searchParams.set("channel", normalizedChannel);
   }
-  const res = await fetch(url.toString(), { cache: "no-store" });
+  const res = await withTimeout(
+    fetch(url.toString(), { cache: "no-store" }),
+    INDEXER_FETCH_TIMEOUT_MS,
+    "Indexer events request timed out"
+  );
   if (!res.ok) {
     throw new Error(`Indexer events fetch failed (${res.status})`);
   }

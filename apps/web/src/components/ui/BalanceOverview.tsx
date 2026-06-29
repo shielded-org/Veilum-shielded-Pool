@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useCallback, useState } from "react";
 
 import { BalanceItemSkeleton } from "./BalanceItemSkeleton";
 import { DisplayCurrencyToggle } from "./DisplayCurrencyToggle";
@@ -31,9 +32,7 @@ type BalanceOverviewProps = {
   loading?: boolean;
   /** Background sync in progress — show hint without replacing balances. */
   refreshing?: boolean;
-  /** Disable manual refresh while a sync is in flight. */
-  refreshDisabled?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
   ready?: boolean;
   unspentCount: number;
   totalNotes: number;
@@ -67,12 +66,20 @@ export function BalanceOverview({
   onToggleReveal,
   loading,
   refreshing,
-  refreshDisabled,
   onRefresh,
   ready,
   unspentCount,
   totalNotes,
 }: BalanceOverviewProps) {
+  const [manualBusy, setManualBusy] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    if (!onRefresh || manualBusy) return;
+    setManualBusy(true);
+    Promise.resolve(onRefresh())
+      .catch(() => {})
+      .finally(() => setManualBusy(false));
+  }, [onRefresh, manualBusy]);
   const { displayCurrency } = useDisplayCurrency();
   const needsFx = portfolioNeedsFxRate(assets);
   const fx = useFxRates(ready && needsFx);
@@ -165,13 +172,13 @@ export function BalanceOverview({
                 <button
                   type="button"
                   className="balance-overview__toggle"
-                  onClick={onRefresh}
-                  disabled={refreshDisabled}
+                  onClick={handleRefresh}
+                  disabled={manualBusy}
                   aria-label="Refresh shielded balance"
-                  aria-busy={refreshDisabled}
+                  aria-busy={manualBusy}
                 >
-                  {refreshDisabled ? <IconSpinner size={18} /> : <IconRefresh size={18} />}
-                  {refreshDisabled ? "Refreshing…" : "Refresh"}
+                  {manualBusy ? <IconSpinner size={18} /> : <IconRefresh size={18} />}
+                  {manualBusy ? "Refreshing…" : "Refresh"}
                 </button>
               ) : null}
               <button

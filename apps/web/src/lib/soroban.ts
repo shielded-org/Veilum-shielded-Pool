@@ -8,6 +8,9 @@ import {
   type SorobanRpc,
 } from "./clients";
 import type { NetworkConfig } from "./types";
+import { withTimeout } from "./utils";
+
+const READ_SIM_TIMEOUT_MS = 12_000;
 import { bytes32Arg } from "./utils";
 import {
   connectWallet,
@@ -122,7 +125,11 @@ export async function nullifierSpent(
   nullifierHex: string
 ): Promise<boolean> {
   const client = shieldedPoolClient(config, source, poolId, rpcClient);
-  const tx = await client.nullifier_spent({ nullifier: bufferFromHex32(nullifierHex) });
+  const tx = await withTimeout(
+    client.nullifier_spent({ nullifier: bufferFromHex32(nullifierHex) }),
+    READ_SIM_TIMEOUT_MS,
+    "nullifier_spent simulation timed out"
+  );
   return Boolean(tx.result);
 }
 
