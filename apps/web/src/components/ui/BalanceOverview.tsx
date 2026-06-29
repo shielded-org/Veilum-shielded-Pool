@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { BalanceItemSkeleton } from "./BalanceItemSkeleton";
 import { DisplayCurrencyToggle } from "./DisplayCurrencyToggle";
-import { IconEye, IconEyeOff } from "./icons";
+import { IconEye, IconEyeOff, IconRefresh, IconSpinner } from "./icons";
 import { PortfolioChart } from "./PortfolioChart";
 import { PortfolioChartSkeleton } from "./PortfolioChartSkeleton";
 import { useDisplayCurrency } from "../../hooks/use-display-currency";
@@ -31,6 +31,9 @@ type BalanceOverviewProps = {
   loading?: boolean;
   /** Background sync in progress — show hint without replacing balances. */
   refreshing?: boolean;
+  /** Disable manual refresh while a sync is in flight. */
+  refreshDisabled?: boolean;
+  onRefresh?: () => void;
   ready?: boolean;
   unspentCount: number;
   totalNotes: number;
@@ -64,6 +67,8 @@ export function BalanceOverview({
   onToggleReveal,
   loading,
   refreshing,
+  refreshDisabled,
+  onRefresh,
   ready,
   unspentCount,
   totalNotes,
@@ -155,16 +160,31 @@ export function BalanceOverview({
             </p>
           </div>
           {ready && !loading && (
-            <button
-              type="button"
-              className="balance-overview__toggle"
-              onClick={onToggleReveal}
-              aria-label={reveal ? "Hide balances" : "Show balances"}
-              aria-pressed={reveal}
-            >
-              {reveal ? <IconEye size={18} /> : <IconEyeOff size={18} />}
-              {reveal ? "Hide" : "Show"}
-            </button>
+            <div className="balance-overview__actions">
+              {onRefresh ? (
+                <button
+                  type="button"
+                  className="balance-overview__toggle"
+                  onClick={onRefresh}
+                  disabled={refreshDisabled}
+                  aria-label="Refresh shielded balance"
+                  aria-busy={refreshDisabled}
+                >
+                  {refreshDisabled ? <IconSpinner size={18} /> : <IconRefresh size={18} />}
+                  {refreshDisabled ? "Refreshing…" : "Refresh"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="balance-overview__toggle"
+                onClick={onToggleReveal}
+                aria-label={reveal ? "Hide balances" : "Show balances"}
+                aria-pressed={reveal}
+              >
+                {reveal ? <IconEye size={18} /> : <IconEyeOff size={18} />}
+                {reveal ? "Hide" : "Show"}
+              </button>
+            </div>
           )}
         </header>
 

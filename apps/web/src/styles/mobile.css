@@ -455,7 +455,7 @@
     align-items: stretch;
   }
 
-  .balance-overview__toggle {
+  .balance-overview__actions {
     align-self: flex-start;
   }
 

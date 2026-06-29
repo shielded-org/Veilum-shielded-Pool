@@ -10,6 +10,7 @@ import { useTokenRegistry } from "../hooks/use-token-registry";
 import { useWalletTransactions } from "../hooks/use-wallet-transactions";
 import { DashboardConnectScreen } from "../components/ui/DashboardConnectScreen";
 import { useWalletConnection } from "../hooks/use-wallet-connection";
+import { refreshShieldBalanceNow } from "../lib/sync-shielded-now";
 import { humanizeSyncError, noteStatusLabel } from "../lib/user-messages";
 import { summarizeUnspentBySymbol } from "../lib/token-labels";
 import { formatStableAmount, shortenAddress, sortNewestFirst } from "../lib/utils";
@@ -129,8 +130,10 @@ export function DashboardHome() {
         assets={balanceAssets}
         reveal={reveal}
         onToggleReveal={() => setReveal(!reveal)}
+        onRefresh={() => void refreshShieldBalanceNow()}
         loading={balancesLoading}
         refreshing={balanceRefreshing}
+        refreshDisabled={scanRefreshing}
         ready={ready}
         unspentCount={unspent.length}
         totalNotes={notes.length}

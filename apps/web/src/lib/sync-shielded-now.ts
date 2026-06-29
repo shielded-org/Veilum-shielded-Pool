@@ -34,6 +34,19 @@ function bumpApplyGeneration(): void {
   applyGeneration += 1;
 }
 
+/**
+ * Manual dashboard refresh — incremental indexer/RPC scan with nullifier checks.
+ * Keeps current balances visible while syncing (background mode).
+ */
+export function refreshShieldBalanceNow(): Promise<void> {
+  useShieldedStore.getState().setSyncError(null);
+  return syncShieldedWalletNow({
+    background: true,
+    bustIndexerCache: true,
+    awaitNullifiers: true,
+  });
+}
+
 export function syncShieldedWalletNow(options?: SyncOptions): Promise<void> {
   const run = async () => {
     const applyGen = applyGeneration;

@@ -1593,6 +1593,15 @@
   margin-bottom: 20px;
 }
 
+.balance-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .balance-overview__meta {
   margin: 4px 0 0;
   font-size: 13px;
@@ -1614,10 +1623,15 @@
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.balance-overview__toggle:hover {
+.balance-overview__toggle:hover:not(:disabled) {
   background: var(--frost-deep);
   color: var(--ink);
   border-color: rgba(91, 82, 201, 0.2);
+}
+
+.balance-overview__toggle:disabled {
+  cursor: wait;
+  opacity: 0.85;
 }
 
 .balance-overview__grid {
@@ -2442,7 +2456,7 @@
     align-items: stretch;
   }
 
-  .balance-overview__toggle {
+  .balance-overview__actions {
     align-self: flex-start;
   }
 
