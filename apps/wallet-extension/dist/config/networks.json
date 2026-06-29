@@ -1,0 +1,30 @@
+{
+  "local": {
+    "networkPassphrase": "Standalone Network ; February 2017",
+    "rpcUrl": "http://localhost:8000/soroban/rpc",
+    "horizonUrl": "http://localhost:8000",
+    "friendbotUrl": "http://localhost:8000/friendbot",
+    "sourceAccount": "alice",
+    "containerName": "stellar-shielded-local"
+  },
+  "futurenet": {
+    "networkPassphrase": "Test SDF Future Network ; October 2022",
+    "rpcUrl": "https://rpc-futurenet.stellar.org:443",
+    "horizonUrl": "https://horizon-futurenet.stellar.org",
+    "friendbotUrl": "https://friendbot-futurenet.stellar.org",
+    "sourceAccount": "deployer"
+  },
+  "testnet": {
+    "networkPassphrase": "Test SDF Network ; September 2015",
+    "rpcUrl": "https://soroban-testnet.stellar.org:443",
+    "horizonUrl": "https://horizon-testnet.stellar.org",
+    "friendbotUrl": "https://friendbot.stellar.org",
+    "sourceAccount": "bevis"
+  },
+  "mainnet": {
+    "networkPassphrase": "Public Global Stellar Network ; September 2015",
+    "rpcUrl": "https://soroban-mainnet.stellar.org:443",
+    "horizonUrl": "https://horizon.stellar.org",
+    "sourceAccount": "deployer"
+  }
+}

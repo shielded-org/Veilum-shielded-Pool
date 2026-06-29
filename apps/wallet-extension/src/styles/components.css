@@ -1,0 +1,52 @@
+/* Veilum component layer — extends tokenized .btn primitives */
+
+.veilum-btn {
+  min-height: var(--min-tap-target);
+  transition: var(--transition-hover), var(--transition-press);
+}
+
+.veilum-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.veilum-btn--full {
+  width: 100%;
+  justify-content: center;
+}
+
+.veilum-btn--loading {
+  pointer-events: none;
+}
+
+.veilum-btn__label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.veilum-btn.btn-sm {
+  min-height: 36px;
+}
+
+/* Focus — visible ring for keyboard users */
+.veilum-btn:focus-visible,
+.btn:focus-visible,
+.theme-toggle:focus-visible,
+.display-currency-toggle__btn:focus-visible {
+  outline: var(--focus-ring-offset) solid transparent;
+  box-shadow: 0 0 0 var(--focus-ring-offset) var(--bg-elevated), 0 0 0 calc(var(--focus-ring-offset) + 2px) var(--focus-ring);
+}
+
+.input:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 calc(var(--focus-ring-offset) + 1px) var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .veilum-btn:active:not(:disabled) {
+    transform: none;
+  }
+}

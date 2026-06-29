@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Veilum">
+  <rect width="128" height="128" rx="28" fill="#0d7a72"/>
+  <g transform="translate(48 40)" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round">
+    <path d="M16 4 26 10v12L16 28 6 22V10L16 4Z"/>
+    <path d="M16 4v24M6 10l10 6 10-6" opacity="0.55"/>
+  </g>
+</svg>
