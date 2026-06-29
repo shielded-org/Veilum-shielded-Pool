@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Veilum",
+  "version": "0.1.0",
+  "description": "Private stablecoin wallet for Stellar — shield, send, and receive USDC, EURC, and more.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Veilum"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://soroban-testnet.stellar.org/*",
+    "https://horizon-testnet.stellar.org/*",
+    "https://friendbot.stellar.org/*",
+    "https://veilum-shielded-pool-1.onrender.com/*",
+    "https://veilum-shielded-pool.onrender.com/*",
+    "https://veilum-shielded-indexer.fly.dev/*",
+    "https://api.coingecko.com/*",
+    "https://api.frankfurter.app/*",
+    "http://127.0.0.1:8787/*",
+    "http://127.0.0.1:8788/*",
+    "http://127.0.0.1:8789/*",
+    "http://localhost:8787/*",
+    "http://localhost:8788/*",
+    "http://localhost:8789/*"
+  ]
+}
