@@ -25,13 +25,30 @@ type SyncOptions = {
   postTx?: boolean;
   /** Note that must show spent before applying scan to live balance (transfer/unshield). */
   expectSpentNoteId?: string;
+  /** Dashboard refresh button — incremental scan, timeout, re-check unspent nullifiers. */
+  manualRefresh?: boolean;
 };
+
+const MANUAL_REFRESH_TIMEOUT_MS = 60_000;
 
 let applyGeneration = 0;
 let syncChain: Promise<void> = Promise.resolve();
+let refreshingDepth = 0;
 
 function bumpApplyGeneration(): void {
   applyGeneration += 1;
+}
+
+function beginRefreshing(): void {
+  refreshingDepth += 1;
+  useShieldedStore.getState().setScanRefreshing(true);
+}
+
+function endRefreshing(): void {
+  refreshingDepth = Math.max(0, refreshingDepth - 1);
+  if (refreshingDepth === 0) {
+    useShieldedStore.getState().setScanRefreshing(false);
+  }
 }
 
 /**
@@ -39,12 +56,29 @@ function bumpApplyGeneration(): void {
  * Keeps current balances visible while syncing (background mode).
  */
 export function refreshShieldBalanceNow(): Promise<void> {
-  useShieldedStore.getState().setSyncError(null);
-  return syncShieldedWalletNow({
-    background: true,
-    bustIndexerCache: true,
-    awaitNullifiers: true,
+  bumpApplyGeneration();
+  const applyGen = applyGeneration;
+  const state = useShieldedStore.getState();
+  state.setSyncError(null);
+  refreshingDepth = 0;
+  state.setScanRefreshing(false);
+
+  const run = async () => {
+    await runFullScan(
+      {
+        background: true,
+        bustIndexerCache: true,
+        awaitNullifiers: true,
+        manualRefresh: true,
+      },
+      applyGen
+    );
+  };
+
+  syncChain = run().catch((e) => {
+    scanDebugWarn("sync:chainError", { error: formatWalletError(e) });
   });
+  return syncChain;
 }
 
 export function syncShieldedWalletNow(options?: SyncOptions): Promise<void> {
@@ -293,8 +327,9 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
     storeNotes: state.notes.length,
   });
 
-  if (background || options.postTx) {
-    state.setScanRefreshing(true);
+  const showRefreshing = background || options.postTx;
+  if (showRefreshing) {
+    beginRefreshing();
   } else if (initial) {
     state.setSyncError(null);
   }
@@ -313,7 +348,18 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
     const showInitialLoading = initial && metadataNotes.length === 0;
     if (showInitialLoading) state.setScanLoading(true);
 
-    const result = await refreshShieldedWallet({
+    const unspentIds =
+      options.manualRefresh === true
+        ? metadataNotes.filter((n) => !n.spent).map((n) => n.id)
+        : undefined;
+    const forceSpendCheckNoteIds =
+      options.expectSpentNoteId != null
+        ? [options.expectSpentNoteId]
+        : unspentIds?.length
+          ? unspentIds
+          : undefined;
+
+    const refreshWork = refreshShieldedWallet({
       network: state.network,
       wallet,
       viewingKey: state.viewingKey,
@@ -328,8 +374,20 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
       forceFullScan: options.forceFullScan,
       bustIndexerCache: options.bustIndexerCache,
       postTx: options.postTx,
-      forceSpendCheckNoteIds: options.expectSpentNoteId ? [options.expectSpentNoteId] : undefined,
+      forceSpendCheckNoteIds,
     });
+
+    const result = options.manualRefresh
+      ? await Promise.race([
+          refreshWork,
+          new Promise<never>((_, reject) => {
+            setTimeout(
+              () => reject(new Error("Balance refresh timed out — try again in a moment")),
+              MANUAL_REFRESH_TIMEOUT_MS
+            );
+          }),
+        ])
+      : await refreshWork;
 
     if (applyGen !== applyGeneration) {
       scanDebug("sync:stale", { applyGen, current: applyGeneration });
@@ -392,7 +450,9 @@ async function runFullScan(options: SyncOptions, applyGen: number): Promise<bool
   } finally {
     if (applyGen === applyGeneration) {
       state.setScanLoading(false);
-      state.setScanRefreshing(false);
+    }
+    if (showRefreshing) {
+      endRefreshing();
     }
   }
 

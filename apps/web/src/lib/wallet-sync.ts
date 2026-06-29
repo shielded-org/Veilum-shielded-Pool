@@ -77,7 +77,8 @@ export async function refreshShieldedWallet(params: {
   const liveNotes = params.existingNotes ?? [];
   /** Live wallet wins over cache — cache can lag behind a just-finished post-tx apply. */
   const metadataNotes = liveNotes.length > 0 ? liveNotes : cachedNotes;
-  const requireFreshScan = Boolean(params.postTx || params.bustIndexerCache);
+  /** postTx widens the ledger window; bustIndexerCache only clears the HTTP cache. */
+  const requireFreshScan = Boolean(params.postTx);
   const viewingChannelHex = bytes32Arg(routeForRecipient(params.viewingPub, 0).channel).toLowerCase();
 
   if (params.bustIndexerCache) {
