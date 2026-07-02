@@ -41,7 +41,7 @@ The demo consists of six main parts:
 4. If ASP shield enforcement is enabled, the asp screens, register and get approve (via the ASP service API running) before shielding.
 5. **Shield** public test tokens → **Transfer** privately to a `shd_…` address → **Unshield** to a public `G…` recipient.
 
-Canonical testnet contract IDs live in `apps/web/public/deployment.json`.
+Canonical testnet contract IDs live in `apps/web/public/deployment.json` (see [Deployed contracts](#deployed-contracts-testnet)).
 
 **Option B — Local / Futurenet (full stack)**
 
@@ -183,6 +183,20 @@ Auxiliary circuits (`note-hash`, `hash2`, `hash3`) provide Poseidon2 hashing con
 | **asp-deny** | Persistent deny map keyed by `owner_pk` |
 | **asp-gate** | Verifies ASP unshield proof + deny check + calls `pool.fulfill_unshield` |
 | **mock-token** | Mintable SAC-style tokens for local/devnet/E2E |
+
+## Deployed contracts (testnet)
+
+Live protocol contracts on Stellar **testnet**. Source of truth: `apps/web/public/deployment.json`.
+
+| Contract | Address | Explorer |
+|----------|---------|----------|
+| shielded-pool | `CBU6QJ7H2LH2IFZUNTPVBH6637JXOADXVIZTGOLIFGKJREAB6R2AY7D4` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CBU6QJ7H2LH2IFZUNTPVBH6637JXOADXVIZTGOLIFGKJREAB6R2AY7D4) |
+| merkle-tree | `CDAAIDJKLZN5ZR7DCJXS6LWCILPIFAZFHQ7VWQ5YHN5BRXD4XO5UE7AR` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CDAAIDJKLZN5ZR7DCJXS6LWCILPIFAZFHQ7VWQ5YHN5BRXD4XO5UE7AR) |
+| rs-soroban-ultrahonk (verifier) | `CDGRAZJD57XH5KFWYDTFRMJM33UUAYV3UO7YJ4F5RIR4BXPBXAALBD65` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CDGRAZJD57XH5KFWYDTFRMJM33UUAYV3UO7YJ4F5RIR4BXPBXAALBD65) |
+| rs-soroban-ultrahonk (ASP verifier) | `CCRCUHVIVRLFM2MMGY3EVIE2MX2DDIFEKMPWQMAFH2KJMGPIMYW3MXQR` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CCRCUHVIVRLFM2MMGY3EVIE2MX2DDIFEKMPWQMAFH2KJMGPIMYW3MXQR) |
+| asp-gate | `CC2E22YO333KAES2UD3IL2SLPQN3VBQ66MC7JHWJWKGYTBHV4XEQ35A6` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CC2E22YO333KAES2UD3IL2SLPQN3VBQ66MC7JHWJWKGYTBHV4XEQ35A6) |
+| asp-membership | `CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CCUNWW5XXCBS2QQOYOWGCMC7UMOKWWVV7OHC6MJXISTLEDHSBTQFRVEI) |
+| asp-deny | `CAUKPALXFWJ5OCBETYILQ5FIZG5LJ5ZXA2DE2VFZJKBE4OQ5UAERDFQ7` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CAUKPALXFWJ5OCBETYILQ5FIZG5LJ5ZXA2DE2VFZJKBE4OQ5UAERDFQ7) |
 
 #### Relayer
 
