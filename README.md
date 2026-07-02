@@ -11,7 +11,7 @@ The system Implements **Association Set Providers (ASPs)** as a compliance bound
 ## Features
 
 - **Private transfers**: Send shielded notes without revealing sender identity, recipient Stellar address, or amount on-chain
-- **Multi-asset pool**: One pool custodies multiple enabled Stellar tokens (USDC, EURC, and test mocks); each note is bound to a specific asset
+- **Multi-asset pool**: One pool custodies multiple enabled Stellar tokens (USDC, EURC, MGUSD, and YLDS); each note is bound to a specific asset
 - **Zero-knowledge proofs**: UltraHonk proofs generated from Noir circuits and verified in Soroban via `rs-soroban-ultrahonk`
 - **Relayer-submitted spends**: Private transfers and unshields are submitted by a relayer so the user's wallet is not the on-chain transaction source
 - **Shielded receive addresses**: Recipients share `shd_…` addresses; senders route encrypted notes without knowing the recipient's `G…` account
