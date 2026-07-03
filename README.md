@@ -18,6 +18,7 @@ The system Implements **Association Set Providers (ASPs)** as a compliance bound
 - **ASP compliance boundary**: Membership proofs on shield/unshield; internal transfers stay private and ASP-free
 - **Browser-based proving**: Client-side proof generation with Noir.js and Barretenberg (`@aztec/bb.js`), with CLI proving on the relayer for reliable on-chain verification
 - **Stellar integration**: Built on Soroban smart contracts, Stellar Wallets Kit, and standard token approvals for deposits
+- **Mobile support**: The web dashboard works on mobile browsers — connect with the **Albedo** or **xBull** wallet for shield, transfer, and unshield on the go
 - **Pool events indexer**: Archives pool contract events and merkle leaf commitments below Soroban RPC retention; serves ordered merkle snapshots for fast client sync
 - **Chrome wallet extension** (`apps/wallet-extension/`): Self-custodial popup wallet with encrypted vault, HD multi-account, shield/send/receive/withdraw, background indexer sync, and local activity history — same contracts and relayer as the web dashboard
 
@@ -206,7 +207,7 @@ Live protocol contracts on Stellar **testnet** (excludes mintable mock stablecoi
 **Option A — Testnet (contracts already deployed)**
 
 1. Open the hosted web app https://veilum-shield.vercel.app/ (or run the web app locally against testnet — see Option B, step 3 only).
-2. Connect a Stellar wallet (Freighter, xBull, Albedo, Lobstr, etc.).
+2. Connect a Stellar wallet (Freighter, xBull, Albedo, Lobstr, etc.). On **mobile browsers**, use **Albedo** or **xBull** — both work without a desktop extension.
 3. Sign the one-time key-derivation consent to derive local spending and viewing keys (keys never leave the browser).
 4. If ASP shield enforcement is enabled, the asp screens, register and get approve (via the ASP service API running) before shielding.
 5. **Shield** public test tokens → **Transfer** privately to a `shd_…` address → **Unshield** to a public `G…` recipient.
