@@ -20,6 +20,7 @@ The system Implements **Association Set Providers (ASPs)** as a compliance bound
 - **Stellar integration**: Built on Soroban smart contracts, Stellar Wallets Kit, and standard token approvals for deposits
 - **Mobile support**: The web dashboard works on mobile browsers — connect with the **Albedo** or **xBull** wallet for shield, transfer, and unshield on the go
 - **Pool events indexer**: Archives pool contract events and merkle leaf commitments below Soroban RPC retention; serves ordered merkle snapshots for fast client sync
+- **Web app** (`apps/web/`): Full dashboard for wallet connect, shield, transfer, unshield, notes, keys, faucet, and ASP admin — connect any Stellar Wallets Kit wallet (Freighter, xBull, Albedo, Lobstr) on desktop or mobile
 - **Chrome wallet extension** (`apps/wallet-extension/`): Self-custodial popup wallet with encrypted vault, HD multi-account, shield/send/receive/withdraw, background indexer sync, and local activity history — same contracts and relayer as the web dashboard
 
 ## Demo Application
