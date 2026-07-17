@@ -4,7 +4,7 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BN254_FIELD_MODULUS } from "./types.js";
-import { computeIncrementalMerklePath, parseHex32, toHex32 } from "./hash.js";
+import { computeIncrementalMerklePath, computeIncrementalMerkleWitness, parseHex32, toHex32, } from "./hash.js";
 import { executeNoirWasm } from "./noir-wasm.js";
 import { resolveNoirPackage } from "./noir-packages.js";
 import { hasNargoCli, toolEnv } from "./toolchain.js";
@@ -71,6 +71,10 @@ export async function aspLeaf(_hasher, ownerPk, membershipBlinding) {
     return computeAspLeafViaNoir(ownerPk, membershipBlinding);
 }
 export async function buildAspMembershipPath(hasher, leaves, leafIndex) {
+    // Full on-chain tree: prove against the current root, not the insertion-time root.
+    if (leaves.length > leafIndex + 1) {
+        return computeIncrementalMerkleWitness(hasher, leaves, leafIndex, ASP_TREE_DEPTH);
+    }
     return computeIncrementalMerklePath(hasher, leaves, leafIndex, ASP_TREE_DEPTH);
 }
 export async function fetchAspStatus(aspUrl, ownerPk) {

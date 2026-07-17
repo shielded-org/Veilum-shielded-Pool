@@ -30,7 +30,8 @@
     "e2e:asp": "node scripts/asp-e2e.mjs",
     "e2e:local": "STELLAR_NETWORK=local node scripts/devnet-e2e.mjs",
     "e2e:testnet": "node scripts/devnet-e2e.mjs",
-    "check": "npm run build:sdk"
+    "check": "npm run build:sdk",
+    "docx": "node scripts/md-to-docx.mjs"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",

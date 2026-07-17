@@ -6,7 +6,12 @@ import { join } from "node:path";
 
 import { BN254_FIELD_MODULUS, type Hex32 } from "./types.js";
 import type { PoseidonHasher } from "./hash.js";
-import { computeIncrementalMerklePath, parseHex32, toHex32 } from "./hash.js";
+import {
+  computeIncrementalMerklePath,
+  computeIncrementalMerkleWitness,
+  parseHex32,
+  toHex32,
+} from "./hash.js";
 import { executeNoirWasm } from "./noir-wasm.js";
 import { resolveNoirPackage } from "./noir-packages.js";
 import { hasNargoCli, toolEnv } from "./toolchain.js";
@@ -95,6 +100,10 @@ export async function buildAspMembershipPath(
   leaves: Hex32[],
   leafIndex: number
 ) {
+  // Full on-chain tree: prove against the current root, not the insertion-time root.
+  if (leaves.length > leafIndex + 1) {
+    return computeIncrementalMerkleWitness(hasher, leaves, leafIndex, ASP_TREE_DEPTH);
+  }
   return computeIncrementalMerklePath(hasher, leaves, leafIndex, ASP_TREE_DEPTH);
 }
 

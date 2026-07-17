@@ -139,6 +139,9 @@ export function ShieldPage() {
 
   function onShield() {
     if (!wallet || !viewingPub || !ownerPk) throw new Error("Connect wallet first");
+    const parsedAmount = parseTokenAmount(amount);
+    if (parsedAmount <= 0n) throw new Error("Enter a valid shield amount");
+    const amountLabel = `${amount} ${selected}`;
     const txId = crypto.randomUUID();
     const routeCursorAtSubmit = routeCursor;
 
@@ -147,7 +150,7 @@ export function ShieldPage() {
       walletAddress: wallet,
       type: "shield",
       status: "pending",
-      amount: `${amount} ${selected}`,
+      amount: amountLabel,
       createdAt: new Date().toISOString(),
       progressStep: "prepare",
       progressMessage: "Starting shield deposit…",
@@ -157,7 +160,7 @@ export function ShieldPage() {
     runShieldJob({
       wallet,
       txId,
-      amountLabel: `${amount} ${selected}`,
+      amountLabel,
       tokenSymbol: selected,
       amount,
       onAfterDeposit: async () => {
@@ -176,7 +179,7 @@ export function ShieldPage() {
             viewingPub,
             ownerPk: ownerPk as Hex32,
           },
-          amount: parseTokenAmount(amount),
+          amount: parsedAmount,
           tokenContractId: tokenId,
           routeCursor: routeCursorAtSubmit,
           onStatus,
@@ -187,8 +190,6 @@ export function ShieldPage() {
         };
       },
     });
-
-    setAmount("");
   }
 
   return (

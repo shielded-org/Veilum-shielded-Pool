@@ -17,3 +17,9 @@ docs/
 
 DESIGN.md
 PRODUCT.md
+
+# Local doc export tooling / artifacts
+.pandoc-reference.docx
+scripts/md-to-docx.mjs
+technical.docx
+technical.md

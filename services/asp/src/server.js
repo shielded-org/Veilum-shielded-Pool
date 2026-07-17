@@ -23,6 +23,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import {
   backfillMembershipsFromChain,
   extendAspSorobanReader,
+  resolveFullMembershipChain,
   resolveMembershipChain,
 } from "./asp-chain.js";
 import {
@@ -223,10 +224,7 @@ async function invokeDenyOnChain(ownerPk, deny = true) {
   await aspSubmitter.submitContractInvoke(ASP_DENY, fn, [bytes32ScVal(ownerPk)]);
 }
 
-async function validateAspRoot(aspRoot, approvedRecord) {
-  if (approvedRecord?.aspRoot?.toLowerCase() === aspRoot.toLowerCase()) {
-    return true;
-  }
+async function validateAspRoot(aspRoot) {
   if (!aspSoroban) {
     throw new Error("ASP_MEMBERSHIP_CONTRACT not configured");
   }
@@ -470,7 +468,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 503, { ok: false, error: "ASP Soroban reader not configured" });
       }
 
-      const { leafIndex, chain } = await resolveMembershipChain({
+      const { leafIndex } = await resolveMembershipChain({
         db,
         aspReader: aspSoroban,
         contractId: ASP_MEMBERSHIP,
@@ -478,30 +476,36 @@ const server = http.createServer(async (req, res) => {
         leafIndexHint: approved.leafIndex ?? 0,
       });
 
-      if (approved.leafIndex !== leafIndex) {
-        approved.leafIndex = leafIndex;
-        const aspRootNow = await aspSoroban.getLastRoot();
-        approved.aspRoot = aspRootNow;
-        backfillMembershipsFromChain(db, ASP_MEMBERSHIP, chain, aspRootNow);
-        saveDb(db);
-      } else {
-        backfillMembershipsFromChain(db, ASP_MEMBERSHIP, chain, approved.aspRoot);
-        saveDb(db);
-      }
+      const { chain: fullChain } = await resolveFullMembershipChain({
+        aspReader: aspSoroban,
+        contractId: ASP_MEMBERSHIP,
+        db,
+      });
+      saveDb(db);
 
       const leafHashes = await Promise.all(
-        chain.map((m) => computeAspLeafViaNoir(m.ownerPk, m.membershipBlinding))
+        fullChain.map((m) => computeAspLeafViaNoir(m.ownerPk, m.membershipBlinding))
       );
       const hasher = createLocalPoseidonHasher();
       const pathInfo = await buildAspMembershipPath(hasher, leafHashes, leafIndex);
-      const aspRoot = pathInfo.root;
-      const rootValid = await validateAspRoot(aspRoot, approved);
+      const aspRoot = await aspSoroban.getLastRoot();
+      if (pathInfo.root.toLowerCase() !== aspRoot.toLowerCase()) {
+        return json(res, 500, {
+          ok: false,
+          error: "ASP path root does not match on-chain tree — re-run compliance scan",
+        });
+      }
+      const rootValid = await validateAspRoot(aspRoot);
       if (!rootValid) {
         return json(res, 500, {
           ok: false,
-          error: "ASP path root mismatch with on-chain tree — re-run compliance scan",
+          error: "ASP on-chain root is not in known history — contact operator",
         });
       }
+
+      approved.leafIndex = leafIndex;
+      approved.aspRoot = aspRoot;
+      saveDb(db);
       return json(res, 200, {
         ok: true,
         ownerPk,

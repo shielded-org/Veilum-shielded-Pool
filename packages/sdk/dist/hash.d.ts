@@ -18,6 +18,16 @@ export declare function deriveOwnerPk(hasher: PoseidonHasher, spendingKey: bigin
 export declare function noteCommitment(hasher: PoseidonHasher, ownerPk: bigint, tokenField: Hex32, amount: bigint, blinding: bigint): Promise<Hex32>;
 export declare function nullifier(hasher: PoseidonHasher, spendingKey: bigint, commitment: Hex32): Promise<Hex32>;
 export declare function buildZeroes(hasher: PoseidonHasher, depth: number): Promise<bigint[]>;
+/**
+ * Merkle proof for a leaf in an incremental tree after ALL `leaves` are inserted.
+ * Siblings verify against the current root (not the root at insertion time).
+ */
+export declare function computeIncrementalMerkleWitness(hasher: PoseidonHasher, leaves: Hex32[], targetIndex: number, depth?: number): Promise<{
+    root: Hex32;
+    siblings: Hex32[];
+    directions: boolean[];
+    leafIndex: number;
+}>;
 /** Siblings/path for a sequentially-inserted leaf — matches contract verify_path. */
 export declare function computeIncrementalMerklePath(hasher: PoseidonHasher, leaves: Hex32[], targetIndex: number, depth?: number): Promise<{
     root: Hex32;

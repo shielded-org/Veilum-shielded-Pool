@@ -58,6 +58,23 @@ export function backfillMembershipsFromChain(db, contractId, chain, aspRoot) {
   }
 }
 
+/** All on-chain membership inserts [0..next_index-1] for current-root proofs. */
+export async function resolveFullMembershipChain({ aspReader, contractId, db }) {
+  if (!aspReader?.getNextIndex || !aspReader?.buildMembershipChainThrough) {
+    throw new Error("ASP Soroban reader not configured for full membership chain");
+  }
+  const nextIndex = await aspReader.getNextIndex();
+  if (nextIndex <= 0) {
+    throw new Error("ASP membership tree is empty");
+  }
+  const chain = await aspReader.buildMembershipChainThrough(nextIndex - 1);
+  if (db && contractId) {
+    const aspRoot = await aspReader.getLastRoot?.();
+    backfillMembershipsFromChain(db, contractId, chain, aspRoot);
+  }
+  return { chain, nextIndex };
+}
+
 export async function resolveMembershipChain({
   db,
   aspReader,

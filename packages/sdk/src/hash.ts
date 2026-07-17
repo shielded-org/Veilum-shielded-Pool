@@ -238,6 +238,56 @@ async function incrementalInsertLeaf(
   }
 }
 
+/**
+ * Merkle proof for a leaf in an incremental tree after ALL `leaves` are inserted.
+ * Siblings verify against the current root (not the root at insertion time).
+ */
+export async function computeIncrementalMerkleWitness(
+  hasher: PoseidonHasher,
+  leaves: Hex32[],
+  targetIndex: number,
+  depth = 20
+): Promise<{ root: Hex32; siblings: Hex32[]; directions: boolean[]; leafIndex: number }> {
+  if (targetIndex < 0 || targetIndex >= leaves.length) {
+    throw new Error("targetIndex out of range for incremental merkle witness");
+  }
+  const zeroes = await buildZeroes(hasher, depth);
+  const filledSubtrees = new Array<bigint>(depth).fill(0n);
+  const nodeLayers: Map<number, bigint>[] = Array.from({ length: depth }, () => new Map());
+
+  let currentRoot = 0n;
+  for (let leafIdx = 0; leafIdx < leaves.length; leafIdx += 1) {
+    let index = leafIdx;
+    let currentHash = parseHex32(leaves[leafIdx]);
+    for (let level = 0; level < depth; level += 1) {
+      const pos = index;
+      if ((index & 1) === 0) {
+        nodeLayers[level].set(pos, currentHash);
+        filledSubtrees[level] = currentHash;
+        currentHash = BigInt(await hasher.hash2(currentHash, zeroes[level]));
+      } else {
+        nodeLayers[level].set(pos ^ 1, filledSubtrees[level]);
+        nodeLayers[level].set(pos, currentHash);
+        currentHash = BigInt(await hasher.hash2(filledSubtrees[level], currentHash));
+      }
+      index >>= 1;
+    }
+    currentRoot = currentHash;
+  }
+
+  const siblings: Hex32[] = [];
+  const directions: boolean[] = [];
+  let idx = targetIndex;
+  for (let level = 0; level < depth; level += 1) {
+    const siblingIdx = idx ^ 1;
+    siblings.push(toHex32(nodeLayers[level].get(siblingIdx) ?? zeroes[level]));
+    directions.push((idx & 1) === 1);
+    idx >>= 1;
+  }
+
+  return { root: toHex32(currentRoot), siblings, directions, leafIndex: targetIndex };
+}
+
 /** Siblings/path for a sequentially-inserted leaf — matches contract verify_path. */
 export async function computeIncrementalMerklePath(
   hasher: PoseidonHasher,

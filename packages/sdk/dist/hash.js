@@ -177,6 +177,48 @@ async function incrementalInsertLeaf(hasher, leaf, leafIndex, depth, zeroes, fil
         index >>= 1;
     }
 }
+/**
+ * Merkle proof for a leaf in an incremental tree after ALL `leaves` are inserted.
+ * Siblings verify against the current root (not the root at insertion time).
+ */
+export async function computeIncrementalMerkleWitness(hasher, leaves, targetIndex, depth = 20) {
+    if (targetIndex < 0 || targetIndex >= leaves.length) {
+        throw new Error("targetIndex out of range for incremental merkle witness");
+    }
+    const zeroes = await buildZeroes(hasher, depth);
+    const filledSubtrees = new Array(depth).fill(0n);
+    const nodeLayers = Array.from({ length: depth }, () => new Map());
+    let currentRoot = 0n;
+    for (let leafIdx = 0; leafIdx < leaves.length; leafIdx += 1) {
+        let index = leafIdx;
+        let currentHash = parseHex32(leaves[leafIdx]);
+        for (let level = 0; level < depth; level += 1) {
+            const pos = index;
+            if ((index & 1) === 0) {
+                nodeLayers[level].set(pos, currentHash);
+                filledSubtrees[level] = currentHash;
+                currentHash = BigInt(await hasher.hash2(currentHash, zeroes[level]));
+            }
+            else {
+                nodeLayers[level].set(pos ^ 1, filledSubtrees[level]);
+                nodeLayers[level].set(pos, currentHash);
+                currentHash = BigInt(await hasher.hash2(filledSubtrees[level], currentHash));
+            }
+            index >>= 1;
+        }
+        currentRoot = currentHash;
+    }
+    const siblings = [];
+    const directions = [];
+    let idx = targetIndex;
+    for (let level = 0; level < depth; level += 1) {
+        const siblingIdx = idx ^ 1;
+        siblings.push(toHex32(nodeLayers[level].get(siblingIdx) ?? zeroes[level]));
+        directions.push((idx & 1) === 1);
+        idx >>= 1;
+    }
+    return { root: toHex32(currentRoot), siblings, directions, leafIndex: targetIndex };
+}
 /** Siblings/path for a sequentially-inserted leaf — matches contract verify_path. */
 export async function computeIncrementalMerklePath(hasher, leaves, targetIndex, depth = 20) {
     if (targetIndex < 0 || targetIndex >= leaves.length) {
